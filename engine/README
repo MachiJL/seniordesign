@@ -1,2 +1,2 @@
-To get 'Master_Orchestrator.py' to work type this into your command line:
+To get 'Master_Orchestrator.py' to work type this into your command line prior to running the code:
 py -m pip install aiohttp
