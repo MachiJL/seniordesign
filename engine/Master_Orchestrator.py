@@ -1,3 +1,5 @@
+# This is a simple implementation of the Master Controller using asyncio and aiohttp
+# Made by Mose E. Willis Jr. for Senior Design 2026 
 import asyncio
 import aiohttp
 import time
@@ -50,7 +52,7 @@ class CompoundMaster:
 
 if __name__ == "__main__":
     mock_data = [f"Test {i}" for i in range(20)]
-    # Using a public test endpoint to ensure it works immediately
+    # Using a public test endpoint to ensure it works immediately!
     master = CompoundMaster(target_url="https://httpbin.org/post")
     
     print("Starting Master Controller...")
