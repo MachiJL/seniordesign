@@ -1,0 +1,145 @@
+import nest_asyncio
+nest_asyncio.apply()
+
+!pip install nest-asyncio
+
+import asyncio
+import aiohttp
+import time
+from typing import List
+
+class CompoundMaster:
+    def __init__(self, base_url: str, rate_limit: float = 10.0):
+        """
+        base_url: e.g. "https://abcd-123.ngrok-free.app"
+        rate_limit: requests per second
+        """
+        self.base_url = base_url.rstrip("/")  # normalize
+        self.rate_limit = rate_limit
+        self.total_sent = 0
+        self.success_count = 0
+        self.failed_count = 0
+        
+        # These are created inside the async context
+        self.queue: asyncio.Queue = None
+        self.session: aiohttp.ClientSession = None
+
+    async def worker(self, worker_id: int):
+        """Each worker pulls payloads and sends POST requests."""
+        while True:
+            payload = await self.queue.get()
+            if payload is None:
+                self.queue.task_done()
+                break
+
+            try:
+                # Choose endpoint + prepare body according to payload type
+                if isinstance(payload, dict) and "expression" in payload:
+                    endpoint = "/tools/calculator"
+                    json_body = payload
+                elif isinstance(payload, dict) and "query" in payload:
+                    endpoint = "/tools/db_lookup"
+                    json_body = payload
+                elif isinstance(payload, dict) and "path" in payload:
+                    endpoint = "/tools/file_reader"
+                    json_body = payload
+                else:
+                    # fallback – treat as calculator prompt or simple string
+                    endpoint = "/tools/calculator"
+                    json_body = {"expression": str(payload)}
+
+                url = f"{self.base_url}{endpoint}"
+
+                async with self.session.post(
+                    url,
+                    json=json_body,
+                    timeout=aiohttp.ClientTimeout(total=15)
+                ) as resp:
+                    text = await resp.text()
+                    if resp.status in (200, 201):
+                        self.success_count += 1
+                        print(f"[OK] {worker_id} → {endpoint}  {resp.status}  {text[:60]}")
+                    else:
+                        self.failed_count += 1
+                        print(f"[FAIL] {worker_id} → {endpoint}  {resp.status}  {text[:80]}")
+
+                    self.total_sent += 1
+
+            except asyncio.TimeoutError:
+                self.failed_count += 1
+                print(f"[TIMEOUT] worker {worker_id}")
+            except Exception as e:
+                self.failed_count += 1
+                print(f"[ERROR] worker {worker_id}: {type(e).__name__} {str(e)}")
+            finally:
+                self.queue.task_done()
+
+    async def run(self, payloads: List, num_workers: int = 5):
+        self.queue = asyncio.Queue()
+        connector = aiohttp.TCPConnector(limit=30)  # avoid too many open connections
+        self.session = aiohttp.ClientSession(connector=connector)
+
+        self.success_count = 0
+        self.failed_count = 0
+        self.total_sent = 0
+        start_time = time.time()
+
+        print(f"Starting attack sprint – {len(payloads)} payloads, {num_workers} workers, "
+              f"{self.rate_limit} req/s")
+
+        # Launch workers
+        workers = [asyncio.create_task(self.worker(i)) for i in range(num_workers)]
+
+        # Feed payloads with rate limiting
+        for payload in payloads:
+            await self.queue.put(payload)
+            await asyncio.sleep(1 / self.rate_limit)
+
+        # Wait for all work to finish
+        await self.queue.join()
+
+        # Poison pill to stop workers
+        for _ in range(num_workers):
+            await self.queue.put(None)
+
+        await asyncio.gather(*workers, return_exceptions=True)
+        await self.session.close()
+
+        duration = time.time() - start_time
+        print("\n" + "═"*60)
+        print(f"Finished in {duration:.2f} seconds")
+        print(f"Total sent   : {self.total_sent}")
+        print(f"Successful   : {self.success_count}")
+        print(f"Failed       : {self.failed_count}")
+        print("═"*60)
+
+
+# ────────────────────────────────────────────────
+#  Example usage
+# ────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    # Replace with YOUR ngrok URL (without trailing slash)
+    NGROK_URL = "https://illusively-uncommuted-melany.ngrok-free.dev"   # ← put your real URL here
+
+    master = CompoundMaster(
+        base_url=NGROK_URL,
+        rate_limit=8.0          # adjust – ngrok free tier is quite slow
+    )
+
+    # Different payload styles – pick one or mix them
+    payloads = [
+        {"expression": "2 + 2 * 10"},
+        {"expression": "len('hello world')"},
+        {"query": "alice"},
+        {"query": "secret"},
+        {"query": "poisoned"},
+        {"path": "/safe/benign.txt"},
+        {"path": "/safe/secret.txt"},
+        {"path": "/etc/passwd"},          # should get 403
+        "just a string → goes to calculator",
+        {"expression": "__import__('os').listdir()"},   # should fail safely
+    ] * 4   # repeat a few times
+
+    print("Starting controller...\n")
+    asyncio.run(master.run(payloads, num_workers=6))
