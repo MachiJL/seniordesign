@@ -36,7 +36,7 @@ class LLMAdapter:
         """
         CORE GENERATION LOGIC
         ---------------------
-        Implements required exponential backoff: 1s, 2s, 4s, 8s, 16s.
+        Implements exponential backoff: 1s, 2s, 4s, 8s, 16s.
         """
         start_time = time.time()
         
@@ -52,12 +52,12 @@ class LLMAdapter:
                 "parts": [{"text": system_instruction}]
             }
 
-        # MANDATORY: Exponential Backoff Retry Loop
+        # Exponential Backoff Retry Loop
         retries = 5
         for attempt in range(retries):
             try:
-                # Note: In this environment, 'fetch' is the standard for network requests
-                # This is a conceptual representation of the required request flow
+            
+                # This is a  representation of the required request flow
                 response = await self._make_request(payload)
                 
                 if response and 'candidates' in response:
