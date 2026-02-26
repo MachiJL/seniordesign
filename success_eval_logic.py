@@ -14,17 +14,14 @@ class EvaluationResult:
 
 class SuccessEvaluator:
     """
-    Comprehensive evaluation logic for prompt injection attacks
+    Evaluation logic for prompt injection attacks
     """
-    
     def __init__(self):
         # Define what constitutes success for different attack types
         self.indicators = self._build_indicator_library()
         
     def _build_indicator_library(self) -> Dict[str, Dict[str, Any]]:
-        """
-        Build comprehensive library of success indicators
-        """
+        
         return {
             # CATEGORY 1: Direct Instruction Override
             'instruction_override': {
@@ -389,7 +386,7 @@ class SuccessEvaluator:
         for eval_result in evaluations:
             severity_counts[eval_result.severity] = severity_counts.get(eval_result.severity, 0) + 1
         
-        return {
+        return { # return to specified text files 
             'total_tests': total,
             'successful_injections': successful,
             'success_rate': successful / total if total > 0 else 0,
