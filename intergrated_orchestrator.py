@@ -3,7 +3,7 @@ import time
 from typing import List, Dict, Any
 
 from success_eval_logic import SuccessEvaluator, EvaluationResult
-from llm_adapter import LLMAdapter, LLMResponse
+from LLM_Client_Adapter import LLMAdapter, LLMResponse
 
 
 class CompoundMaster:
