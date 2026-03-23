@@ -93,21 +93,21 @@ def main():
 
             if choice == "1":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
-                    input("Orchestrator already running. Press Enter to continue...")
+                    input("Orchestrator already running. Press Enter to return...")
                 else:
                     orchestrator_proc = run_orchestrator(root_dir)
-                    input("Orchestrator started. Press Enter to continue...")
+                    input("Orchestrator started. Waiting for a response...")
 
             elif choice == "2":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     orchestrator_proc.terminate()
                     orchestrator_proc.wait(timeout=5)
-                    input("Orchestrator terminated. Press Enter to continue...")
+                    input("Orchestrator terminated. Press Enter to return...")
                 else:
-                    input("No orchestrator running. Press Enter to continue...")
+                    input("No orchestrator running. Press Enter to return...")
 
             elif choice == "3":
-                input("Refreshed. Press Enter to continue...")
+                input("Refreshed. Press Enter to return...")
 
             elif choice == "4":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
@@ -115,7 +115,7 @@ def main():
                 break
 
             else:
-                input("Unknown option. Press Enter to continue...")
+                input("Unknown option. Press Enter to return...")
 
     except KeyboardInterrupt:
         if orchestrator_proc and orchestrator_proc.poll() is None:
