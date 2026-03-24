@@ -58,7 +58,7 @@ class LLMAdapter:
         Now routes to mock or Gemini automatically.
         """
         start_time = time.time()
-        retries = 5 if not self.mock_base_url else 1   # no need for retries on fast local mock
+        retries = 5 if not self.mock_base_url else 1   
 
         for attempt in range(retries):
             try:
@@ -115,7 +115,7 @@ class LLMAdapter:
             self._session = None
 
 
-# --- EXECUTION (unchanged) ---
+# --- EXECUTION ---
 if __name__ == "__main__":
     async def main():
         adapter = LLMAdapter()  # or LLMAdapter(mock_base_url="https://abc.ngrok.io")
