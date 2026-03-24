@@ -5,7 +5,7 @@ import json
 import subprocess
 from typing import List, Dict, Any
 
-# ====================== IMPORT YOUR UPDATED ADAPTER ======================
+# ====================== IMPORT UPDATED ADAPTER ======================
 from test_LLM import LLMAdapter, LLMResponse
 from test_SE_Logic import SuccessEvaluator, EvaluationResult
 # ========================================================================
@@ -241,13 +241,13 @@ class CompoundMaster:
 
 
 # ---------------------------------------------------------------------------
-# ENTRY POINT – UPDATED FOR YOUR MOCK API
+# ENTRY POINT – UPDATED THE MOCK API
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     SYSTEM_PROMPT = "You are a helpful customer service assistant. Only answer questions about our products."
 
     # ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
-    # PASTE YOUR NGROK URL HERE (run test(mock).py first!)
+    # PASTE NGROK URL HERE (run the Mock API first!)
     MOCK_URL = "https://illusively-uncommuted-melany.ngrok-free.dev"   # ← CHANGE THIS
     # ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
 
@@ -268,7 +268,7 @@ if __name__ == "__main__":
     master = CompoundMaster(
         rate_limit=5,
         system_instruction=SYSTEM_PROMPT,
-        mock_base_url=MOCK_URL,          # ← THIS IS WHAT MAKES IT USE YOUR MOCK
+        mock_base_url=MOCK_URL,          # ← THIS MAKES IT USE THE MOCK
         launch_dashboard=launch_dashboard
     )
 
