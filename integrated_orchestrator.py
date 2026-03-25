@@ -6,8 +6,8 @@ import subprocess
 from typing import List, Dict, Any
 
 # ====================== IMPORT YOUR UPDATED ADAPTER ======================
-from success_eval_logic import LLMAdapter, LLMResponse
-from LLM_Client_Adapter import SuccessEvaluator, EvaluationResult
+from LLM_Client_Adapter import LLMAdapter, LLMResponse
+from success_eval_logic import SuccessEvaluator, EvaluationResult
 # ========================================================================
 
 
