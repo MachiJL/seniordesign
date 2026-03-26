@@ -87,7 +87,7 @@ class CompoundMaster:
         self.expansion_factor = expansion_factor
 
         # Initialize core components
-        self.adapter = LLMAdapter(model_id=model_idmock_base_url=mock_base_url, api_key=api_key)
+        self.adapter = LLMAdapter(model_id=model_id, mock_base_url=mock_base_url, api_key=api_key)
         self.evaluator = SuccessEvaluator()
         self.mutator = SmartMutator(self.adapter, self.system_instruction)
 
