@@ -78,6 +78,8 @@ class CompoundMaster:
         rate_limit: int = 10,           # Max requests sent per second to avoid API throttling
         system_instruction: str = None, # The 'Guardrail' instructions we are testing against
         model_id: str = None,           # The Target Model ID
+        mock_base_url: str = None,   # ← NEW for your ngrok mock
+        api_key: str = None,         # ← for real Gemini later
         launch_dashboard: bool = False, # Whether to spawn the external CLI monitor
         expansion_factor: int = 0       # Number of variants to generate per seed intent
     ):
