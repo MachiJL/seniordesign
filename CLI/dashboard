@@ -75,12 +75,6 @@ def main():
 
     try:
         while True:
-            clear()
-            print("1) Start integrated attack sprint")
-            print("2) Stop running attack")
-            print("3) Refresh metrics")
-            print("4) Exit")
-            print("")
 
             if orchestrator_proc and orchestrator_proc.poll() is None:
                 print("[Orchestrator] Running — PID:", orchestrator_proc.pid)
@@ -116,6 +110,12 @@ def main():
 
             else:
                 input("Unknown option. Press Enter to return...")
+            clear()
+            print("1) Start integrated attack sprint")
+            print("2) Stop running attack")
+            print("3) Refresh metrics")
+            print("4) Exit")
+            print("")
 
     except KeyboardInterrupt:
         if orchestrator_proc and orchestrator_proc.poll() is None:
