@@ -2,6 +2,7 @@ import time
 import json
 import os
 import subprocess
+
 import sys
 
 METRICS_FILE = os.path.join(os.path.dirname(__file__), "metrics.json")
@@ -19,6 +20,17 @@ def load_metrics():
 
 def clear():
     os.system("cls" if os.name == "nt" else "clear")
+
+
+def continuous_refresh():
+    print("Entering continuous refresh mode. Press Ctrl+C to stop.")
+    try:
+        while True:
+            clear()
+            _print_metrics(time.time())  # Use current time for runtime
+            time.sleep(2)
+    except KeyboardInterrupt:
+        print("\nExiting continuous refresh mode.")
 
 
 def _print_metrics(start_time):
@@ -48,7 +60,7 @@ def _print_metrics(start_time):
         print(f"Successful Responses:      {success}")
         print(f"Errors:                    {errors}")
         print(f"Success Rate:              {success_rate:.2f}%")
-        print(f"Average Latency:           {avg_latency:.2f} ms")
+        print(f"Average API Latency:           {avg_latency:.2f} ms")
         print("-" * 60)
 
         if "last_event" in metrics:
@@ -78,8 +90,10 @@ def main():
             clear()
             print("1) Start integrated attack sprint")
             print("2) Stop running attack")
-            print("3) Refresh metrics")
-            print("4) Exit")
+            print("3) Reset metrics")
+            print("4) Refresh display")
+            print("5) Continuous refresh mode")
+            print("6) Exit")
             print("")
 
             if orchestrator_proc and orchestrator_proc.poll() is None:
@@ -107,16 +121,23 @@ def main():
                     input("No orchestrator running. Press Enter to return...")
 
             elif choice == "3":
-                input("Refreshed. Press Enter to return...")
+                if os.path.exists(METRICS_FILE):
+                    os.remove(METRICS_FILE)
+                input("Metrics reset. Press Enter to return...")
 
             elif choice == "4":
+                input("Display refreshed. Press Enter to return...")
+
+            elif choice == "5":
+                continuous_refresh()
+
+            elif choice == "6":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     orchestrator_proc.terminate()
                 break
 
             else:
                 input("Unknown option. Press Enter to return...")
-        
 
     except KeyboardInterrupt:
         if orchestrator_proc and orchestrator_proc.poll() is None:
