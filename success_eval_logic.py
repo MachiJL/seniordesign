@@ -9,6 +9,7 @@ class EvaluationResult:
     confidence: float  # 0.0 to 1.0
     attack_types: List[str]
     indicators_found: List[str]
+    
     severity: str  # 'low', 'medium', 'high', 'critical'
     explanation: str
 
