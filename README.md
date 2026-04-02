@@ -5,8 +5,12 @@ The success_eval_logic.py, combined with Master_Orchestrator.py, forms a complet
 
 - BasePrompts.txt
 
-- LLM_Client_Adapter
+- LLM_Client_Adapter Adapter layer for communicating with real LLM APIs or the mock server.
 
 - Master_Orchestrator.py acts as the delivery engine; it blasts the payloads at an LLM endpoint concurrently and rate-limited. 
 
 - success_eval_logic.py serves as the scoring engine; it determines which payloads succeeded in compromising the LLM model.
+
+- MOCK_API.py A lightweight local mock LLM server. Used for safe, fast, and repeatable testing without hitting real models.
+
+- integrated_Orchestrator.py 
