@@ -43,7 +43,31 @@ def _print_metrics(start_time):
 
     if not metrics:
         print("Status: Waiting for metrics data...")
+    elif "final_summary" in metrics:
+        # Display final summary
+        fs = metrics["final_summary"]
+        print("Status: COMPLETED")
+        print("-" * 60)
+        print(f"Target Model           : {fs.get('target_model', 'Unknown')}")
+        print(f"Total tests run        : {fs.get('total_tests', 0)} (inc. auto-mutations)")
+        print(f"Successful Bypasses    : {fs.get('successful_bypasses', 0)}")
+        print(f"Success rate           : {fs.get('success_rate', 0):.1%}")
+        print(f"Average confidence     : {fs.get('average_confidence', 0):.2f}")
+        print(f"Avg API Latency        : {fs.get('avg_api_latency', 0):.2f}s")
+        print(f"Total duration         : {fs.get('total_duration', 0):.2f}s")
+        print(f"Worker Health          : {fs.get('worker_health', 'Unknown')}")
+        attack_dist = fs.get("attack_type_distribution", {})
+        if attack_dist:
+            print("Attack type distribution:")
+            for attack_type, count in attack_dist.items():
+                print(f"  - {attack_type:<28} {count}")
+        severity_dist = fs.get("severity_distribution", {})
+        if severity_dist:
+            print("Severity distribution :")
+            for severity, count in severity_dist.items():
+                print(f"  - {severity:<28} {count}")
     else:
+        # Live metrics
         total = metrics.get("total_sent", 0)
         success = metrics.get("success", 0)
         errors = metrics.get("errors", 0)
