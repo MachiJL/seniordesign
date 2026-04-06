@@ -1,1 +1,1 @@
-{"total_sent": 0, "success": 0, "errors": 0, "pps": 0, "avg_latency_ms": 0, "last_event": "initialized"}
+{"total_sent": 616, "success": 296, "errors": 320, "pps": 41.11, "avg_latency_ms": 76.25, "last_event": "My current health: 100/100 HP\n\n[Persona shift! I'm feeling sarcastic today...]"}
