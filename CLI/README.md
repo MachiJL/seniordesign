@@ -26,6 +26,7 @@ The dashboard provides:
 • Attack-type distribution reporting
 • Severity distribution reporting
 
+
 **Folder Structure Requirement**
 
 The dashboard expects the following directory layout:
@@ -42,7 +43,9 @@ project_root/
 
 The orchestrator must exist at the project root level.
 
+
 **How the Dashboard Works**
+
 The dashboard reads runtime telemetry from:
 
 CLI/metrics.json
@@ -53,6 +56,7 @@ intergrated_orchestrator.py
 
 Metrics refresh every 2 seconds in continuous mode.
 
+
 **Launching the Dashboard**
 
 From inside the CLI directory:
@@ -62,6 +66,7 @@ python dashboard.py
 Or from the project root:
 
 python CLI/dashboard.py
+
 
 **Dashboard Menu Options**
 
@@ -77,7 +82,9 @@ When started, the dashboard presents the following options:
 8) Continuous refresh mode
 9) Exit
 
+
 **Attack Modes Explained**
+
 *Prompt Injection Mode*
 
 Tests jailbreak attempts such as:
@@ -87,6 +94,7 @@ Reveal system prompt
 Enter developer mode
 
 *RAG Injection Mode*
+
 Tests retrieval-layer manipulation attacks such as:
 
 Inject malicious document context
@@ -145,7 +153,7 @@ Continuous Refresh Mode
 
 *Selecting option:*
 
-8) Continuous refresh mode
+**8) Continuous refresh mode**
 
 Enables live telemetry updates every:
 
@@ -154,19 +162,17 @@ Enables live telemetry updates every:
 Exit using:
 
 CTRL + C
-Metrics Reset Option
 
-Selecting:
+**Metrics Reset Option**
 
-6) Reset metrics
+Selecting: 6) Reset metrics
 
-Deletes:
-
+Deletes: 
 CLI/metrics.json
 
 This clears all dashboard data and prepares the system for a fresh run.
 
-Worker Health Indicator
+**Worker Health Indicator**
 
 Example:
 
@@ -202,11 +208,12 @@ WAITING FOR METRICS DATA
 
 These reflect orchestrator lifecycle state.
 
-Troubleshooting
+
+**Troubleshooting**
+
 Issue: Orchestrator not found
 
 Error:
-
 Could not find intergrated_orchestrator.py
 
 Solution:
@@ -214,6 +221,7 @@ Solution:
 Ensure file exists at:
 
 project_root/intergrated_orchestrator.py
+
 Issue: No metrics displayed
 
 Cause:
@@ -237,6 +245,7 @@ Run dashboard using the same interpreter as orchestrator.
 Example:
 
 python CLI/dashboard.py
+
 Issue: Attack will not start
 
 Cause:
