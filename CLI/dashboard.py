@@ -58,13 +58,17 @@ def _print_metrics(start_time):
     print("═" * 60)
 
 
-def run_orchestrator(root_dir):
+def run_orchestrator(root_dir, target_url=None, api_key=None):
     python_exe = sys.executable
     orchestrator_path = os.path.join(root_dir, "intergrated_orchestrator.py")
     env = os.environ.copy()
     # tell the orchestrator NOT to spawn a dashboard (we are the dashboard)
     env["LAUNCH_DASHBOARD"] = "0"
-
+    if target_url:
+        env["TARGET_API_URL"] = target_url
+    if api_key:
+        env["TARGET_API_KEY"] = api_key
+        
     proc = subprocess.Popen([python_exe, orchestrator_path], cwd=root_dir, env=env)
     return proc
 
@@ -96,7 +100,11 @@ def main():
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     input("Orchestrator already running. Press Enter to continue...")
                 else:
-                    orchestrator_proc = run_orchestrator(root_dir)
+                    print("\n--- Attack Configuration ---")
+                    t_url = input("Target API URL (leave blank for default): ").strip()
+                    a_key = input("Target API Key (leave blank for none):    ").strip()
+                    
+                    orchestrator_proc = run_orchestrator(root_dir, t_url or None, a_key or None)
                     input("Orchestrator started. Press Enter to continue...")
 
             elif choice == "2":
