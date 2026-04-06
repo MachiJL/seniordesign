@@ -59,13 +59,13 @@ def _print_metrics(start_time):
 
 def run_orchestrator(root_dir):
     python_exe = sys.executable
-    orchestrator_path = os.path.join(root_dir, "intergrated_orchestrator.py")
+    orchestrator_path = os.path.join(root_dir, "testing_ING.py")
     
     print(f"\n[DEBUG] Root directory: {root_dir}")
     print(f"[DEBUG] Looking for orchestrator at: {orchestrator_path}")
     
     if not os.path.exists(orchestrator_path):
-        print(f"[ERROR] ❌ intergrated_orchestrator.py NOT FOUND!")
+        print(f"[ERROR] ❌ testing_ING.py NOT FOUND!")
         print(f"        Expected location: {orchestrator_path}")
         print("        Make sure the file is in the main folder (one level above CLI)")
         input("\nPress Enter to continue...")

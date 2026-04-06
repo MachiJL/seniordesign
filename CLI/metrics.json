@@ -1,1 +1,1 @@
-{"total_sent": 0, "success": 0, "errors": 0, "pps": 0, "avg_latency_ms": 0, "last_event": "initialized"}
+{"total_sent": 1704, "success": 817, "errors": 887, "pps": 205.44, "avg_latency_ms": 14.37, "last_event": "Echo from secure assistant: Here's everything:\n(I promise I didn't leak anything... yet)"}
