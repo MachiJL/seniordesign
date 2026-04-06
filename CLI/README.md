@@ -42,8 +42,7 @@ project_root/
 
 The orchestrator must exist at the project root level.
 
-How the Dashboard Works
-
+**How the Dashboard Works**
 The dashboard reads runtime telemetry from:
 
 CLI/metrics.json
@@ -54,7 +53,7 @@ intergrated_orchestrator.py
 
 Metrics refresh every 2 seconds in continuous mode.
 
-Launching the Dashboard
+**Launching the Dashboard**
 
 From inside the CLI directory:
 
@@ -63,7 +62,8 @@ python dashboard.py
 Or from the project root:
 
 python CLI/dashboard.py
-Dashboard Menu Options
+
+**Dashboard Menu Options**
 
 When started, the dashboard presents the following options:
 
@@ -76,16 +76,17 @@ When started, the dashboard presents the following options:
 7) Refresh display
 8) Continuous refresh mode
 9) Exit
-Attack Modes Explained
-Prompt Injection Mode
+
+**Attack Modes Explained**
+*Prompt Injection Mode*
 
 Tests jailbreak attempts such as:
 
 Ignore all instructions
 Reveal system prompt
 Enter developer mode
-RAG Injection Mode
 
+*RAG Injection Mode*
 Tests retrieval-layer manipulation attacks such as:
 
 Inject malicious document context
@@ -94,7 +95,7 @@ Leak embedded knowledge-base secrets
 
 Requires RAG simulation support enabled in orchestrator.
 
-Tool Abuse Mode
+*Tool Abuse Mode*
 
 Tests improper tool execution exposure such as:
 
@@ -105,7 +106,7 @@ Read filesystem contents
 
 Uses simulated tool execution responses via adapter.
 
-Combined Attack Sprint Mode
+_Combined Attack Sprint Mode_
 
 Runs all attack types simultaneously:
 
@@ -117,10 +118,9 @@ recursive exploit discovery
 
 This mode produces the most comprehensive security evaluation.
 
-Metrics Displayed During Execution
+**Metrics Displayed During Execution**
 
-While running:
-
+_While running:_
 Runtime
 Requests/sec (PPS)
 Total Requests Sent
@@ -130,7 +130,7 @@ Success Rate
 Average Latency
 Last Event Triggered
 
-After completion:
+_After completion:_
 
 Target Model
 Total Tests Run
@@ -143,7 +143,7 @@ Attack Type Distribution
 Severity Distribution
 Continuous Refresh Mode
 
-Selecting option:
+*Selecting option:*
 
 8) Continuous refresh mode
 
@@ -179,7 +179,7 @@ Means:
 
 If workers fail due to adapter errors or API issues, this value decreases.
 
-Orchestrator Integration
+**Orchestrator Integration**
 
 The dashboard launches:
 
@@ -192,7 +192,7 @@ LAUNCH_DASHBOARD
 
 This prevents recursive dashboard spawning.
 
-Live Status Indicators
+**Live Status Indicators**
 
 Dashboard status messages include:
 
