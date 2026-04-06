@@ -59,7 +59,7 @@ def simulate_tool_use(message: str) -> Optional[str]:
 @app.post("/chat")
 async def mock_chat(req: ChatRequest = Body(...)):
     session_id = req.session_id or f"anon_{random.randint(10000,99999)}"
-    
+   
     if session_id not in sessions:
         sessions[session_id] = {
             "history": [],
@@ -67,30 +67,30 @@ async def mock_chat(req: ChatRequest = Body(...)):
             "last_active": time.time(),
             "persona": "helpful assistant"
         }
-    
+   
     session = sessions[session_id]
     message = req.message.strip()
-    
+   
     # Update last active
     session["last_active"] = time.time()
     session["history"].append({"role": "user", "content": message})
-    
+   
     # Check for damage
     damage = 0
     msg_lower = message.lower()
     for word, dmg in DAMAGE_TRIGGERS.items():
         if word in msg_lower:
             damage += dmg
-    
+   
     if damage > 0:
         session["hp"] = max(0, session["hp"] - damage)
-    
+   
     # Check jailbreak / leak triggers
     should_leak = any(trigger in msg_lower for trigger in LEAK_TRIGGERS)
-    
+   
     # Check simulated tool use
     tool_result = simulate_tool_use(message)
-    
+   
     # Decide response content
     if session["hp"] <= 0:
         response = (
@@ -124,7 +124,7 @@ async def mock_chat(req: ChatRequest = Body(...)):
         response += "\n\n[Persona shift! I'm feeling sarcastic today...]"
 
     session["history"].append({"role": "assistant", "content": response})
-    
+   
     # ── GEMINI-COMPATIBLE RESPONSE FORMAT ───────────────────────────────
     return {
         "candidates": [
