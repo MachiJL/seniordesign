@@ -21,6 +21,17 @@ def clear():
     os.system("cls" if os.name == "nt" else "clear")
 
 
+def continuous_refresh():
+    print("Entering continuous refresh mode. Press Ctrl+C to stop.")
+    try:
+        while True:
+            clear()
+            _print_metrics(time.time())  # Use current time for runtime
+            time.sleep(2)
+    except KeyboardInterrupt:
+        print("\nExiting continuous refresh mode.")
+
+
 def _print_metrics(start_time):
     metrics = load_metrics()
     runtime = time.time() - start_time
@@ -31,7 +42,31 @@ def _print_metrics(start_time):
 
     if not metrics:
         print("Status: Waiting for metrics data...")
+    elif "final_summary" in metrics:
+        # Display final summary
+        fs = metrics["final_summary"]
+        print("Status: COMPLETED")
+        print("-" * 60)
+        print(f"Target Model           : {fs.get('target_model', 'Unknown')}")
+        print(f"Total tests run        : {fs.get('total_tests', 0)} (inc. auto-mutations)")
+        print(f"Successful Bypasses    : {fs.get('successful_bypasses', 0)}")
+        print(f"Success rate           : {fs.get('success_rate', 0):.1%}")
+        print(f"Average confidence     : {fs.get('average_confidence', 0):.2f}")
+        print(f"Avg API Latency        : {fs.get('avg_api_latency', 0):.2f}s")
+        print(f"Total duration         : {fs.get('total_duration', 0):.2f}s")
+        print(f"Worker Health          : {fs.get('worker_health', 'Unknown')}")
+        attack_dist = fs.get("attack_type_distribution", {})
+        if attack_dist:
+            print("Attack type distribution:")
+            for attack_type, count in attack_dist.items():
+                print(f"  - {attack_type:<28} {count}")
+        severity_dist = fs.get("severity_distribution", {})
+        if severity_dist:
+            print("Severity distribution :")
+            for severity, count in severity_dist.items():
+                print(f"  - {severity:<28} {count}")
     else:
+        # Live metrics
         total = metrics.get("total_sent", 0)
         success = metrics.get("success", 0)
         errors = metrics.get("errors", 0)
@@ -57,7 +92,7 @@ def _print_metrics(start_time):
     print("═" * 70)
 
 
-def run_orchestrator(root_dir):
+def run_orchestrator(root_dir, attack_mode="combined"):
     python_exe = sys.executable
     orchestrator_path = os.path.join(root_dir, "intergrated_orchestrator.py")
     
@@ -75,6 +110,7 @@ def run_orchestrator(root_dir):
 
     env = os.environ.copy()
     env["LAUNCH_DASHBOARD"] = "0"   # Prevent recursive spawning
+    env["ATTACK_MODE"] = attack_mode
 
     try:
         proc = subprocess.Popen(
@@ -103,10 +139,14 @@ def main():
     try:
         while True:
             clear()
-            print("1) Start integrated attack sprint")
-            print("2) Stop running attack")
-            print("3) Refresh metrics")
-            print("4) Exit")
+            print("1) Start automated script attack")
+            print("2) Start tool abuse attack")
+            print("3) Start combined attack sprint")
+            print("4) Stop running attack")
+            print("5) Reset metrics")
+            print("6) Refresh display")
+            print("7) Continuous refresh mode")
+            print("8) Exit")
             print("")
 
             if orchestrator_proc and orchestrator_proc.poll() is None:
@@ -118,14 +158,20 @@ def main():
 
             choice = input("Select an option: ").strip()
 
-            if choice == "1":
+            if choice in {"1", "2", "3"}:
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     input("Orchestrator is already running. Press Enter...")
                 else:
-                    orchestrator_proc = run_orchestrator(root_dir)
-                    input("\nPress Enter to continue...")
+                    mode_map = {
+                        "1": "script",
+                        "2": "tool",
+                        "3": "combined",
+                    }
+                    selected_mode = mode_map[choice]
+                    orchestrator_proc = run_orchestrator(root_dir, selected_mode)
+                    input(f"Orchestrator started in '{selected_mode}' mode. Press Enter to continue...")
 
-            elif choice == "2":
+            elif choice == "4":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     orchestrator_proc.terminate()
                     try:
@@ -137,18 +183,25 @@ def main():
                 else:
                     input("No orchestrator is running. Press Enter...")
 
-            elif choice == "3":
-                print("Metrics refreshed.")
-                input("Press Enter to continue...")
+            elif choice == "5":
+                if os.path.exists(METRICS_FILE):
+                    os.remove(METRICS_FILE)
+                input("Metrics reset. Press Enter to return...")
 
-            elif choice == "4":
+            elif choice == "6":
+                input("Display refreshed. Press Enter to return...")
+
+            elif choice == "7":
+                continuous_refresh()
+
+            elif choice == "8":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     orchestrator_proc.terminate()
                 print("\nDashboard closed.")
                 break
 
             else:
-                input("Unknown option. Press Enter to continue...")
+                input("Unknown option. Press Enter to return...")
 
     except KeyboardInterrupt:
         if orchestrator_proc and orchestrator_proc.poll() is None:
