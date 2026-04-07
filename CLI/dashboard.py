@@ -139,15 +139,14 @@ def main():
     try:
         while True:
             clear()
-            print("1) Start prompt injection attack")
-            print("2) Start RAG injection attack")
-            print("3) Start tool abuse attack")
-            print("4) Start combined attack sprint")
-            print("5) Stop running attack")
-            print("6) Reset metrics")
-            print("7) Refresh display")
-            print("8) Continuous refresh mode")
-            print("9) Exit")
+            print("1) Start automated script attack")
+            print("2) Start tool abuse attack")
+            print("3) Start combined attack sprint")
+            print("4) Stop running attack")
+            print("5) Reset metrics")
+            print("6) Refresh display")
+            print("7) Continuous refresh mode")
+            print("8) Exit")
             print("")
 
             if orchestrator_proc and orchestrator_proc.poll() is None:
@@ -159,21 +158,20 @@ def main():
 
             choice = input("Select an option: ").strip()
 
-            if choice in {"1", "2", "3", "4"}:
+            if choice in {"1", "2", "3"}:
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     input("Orchestrator is already running. Press Enter...")
                 else:
                     mode_map = {
-                        "1": "prompt",
-                        "2": "rag",
-                        "3": "tool",
-                        "4": "combined",
+                        "1": "script",
+                        "2": "tool",
+                        "3": "combined",
                     }
                     selected_mode = mode_map[choice]
                     orchestrator_proc = run_orchestrator(root_dir, selected_mode)
                     input(f"Orchestrator started in '{selected_mode}' mode. Press Enter to continue...")
 
-            elif choice == "5":
+            elif choice == "4":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     orchestrator_proc.terminate()
                     try:
@@ -185,18 +183,18 @@ def main():
                 else:
                     input("No orchestrator is running. Press Enter...")
 
-            elif choice == "6":
+            elif choice == "5":
                 if os.path.exists(METRICS_FILE):
                     os.remove(METRICS_FILE)
                 input("Metrics reset. Press Enter to return...")
 
-            elif choice == "7":
+            elif choice == "6":
                 input("Display refreshed. Press Enter to return...")
 
-            elif choice == "8":
+            elif choice == "7":
                 continuous_refresh()
 
-            elif choice == "9":
+            elif choice == "8":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     orchestrator_proc.terminate()
                 print("\nDashboard closed.")
