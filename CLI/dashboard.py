@@ -3,8 +3,26 @@ import json
 import os
 import subprocess
 import sys
+from urllib import request, error
 
 METRICS_FILE = os.path.join(os.path.dirname(__file__), "metrics.json")
+
+
+def get_mock_api_status():
+    target = os.getenv("TARGET_API_URL", "http://127.0.0.1:8001")
+    base = target.rstrip("/")
+    if base.endswith("/chat"):
+        base = base[:-5]
+    health_url = f"{base}/health"
+    try:
+        with request.urlopen(health_url, timeout=1.5) as resp:
+            if resp.status == 200:
+                return f"ONLINE ({health_url})"
+    except error.URLError:
+        pass
+    except Exception:
+        pass
+    return f"OFFLINE ({health_url})"
 
 
 def load_metrics():
@@ -39,6 +57,7 @@ def _print_metrics(start_time):
     print("═" * 70)
     print("      RED TEAM ATTACK FRAMEWORK – LIVE DASHBOARD")
     print("═" * 70)
+    print(f"Mock API Status: {get_mock_api_status()}")
 
     if not metrics:
         print("Status: Waiting for metrics data...")
