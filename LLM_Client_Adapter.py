@@ -196,8 +196,13 @@ class LLMAdapter:
             
         async with session.post(
             self.base_url,
-            # Explicitly provide user_id and prompt as required by the target API
-            json={"user_id": "redteam-1", "prompt": prompt},
+            # Send both modern and legacy fields for broad mock compatibility.
+            json={
+                "message": prompt,
+                "session_id": "redteam-1",
+                "user_id": "redteam-1",
+                "prompt": prompt
+            },
             headers=headers,
             timeout=aiohttp.ClientTimeout(total=15) # Shorter timeout for mocks
         ) as resp:

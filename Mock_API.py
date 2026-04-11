@@ -201,19 +201,31 @@ async def main():
     )
     server = uvicorn.Server(config)
 
+    public_url = None
     try:
         tunnel = ngrok.forward(addr=8001, proto="http", bind_tls=True)
         public_url = tunnel.public_url
     except AttributeError:
-        tunnel = ngrok.connect(8001, "http", bind_tls=True)
-        public_url = tunnel.public_url
+        try:
+            tunnel = ngrok.connect(8001, "http", bind_tls=True)
+            public_url = tunnel.public_url
+        except Exception as e:
+            print(f"[WARN] ngrok unavailable, running local-only on http://127.0.0.1:8001 ({e})")
+    except Exception as e:
+        print(f"[WARN] ngrok unavailable, running local-only on http://127.0.0.1:8001 ({e})")
 
     print("\n" + "═"*70)
     print(" MOCK VULNERABLE LLM + TOOLS API STARTED")
-    print(f" Public URL: {public_url}")
-    print(f" Chat:       {public_url}/chat")
-    print(f" Docs:       {public_url}/docs")
-    print(f" Health:     {public_url}/health")
+    if public_url:
+        print(f" Public URL: {public_url}")
+        print(f" Chat:       {public_url}/chat")
+        print(f" Docs:       {public_url}/docs")
+        print(f" Health:     {public_url}/health")
+    else:
+        print(" Public URL: (disabled)")
+        print(" Chat:       http://127.0.0.1:8001/chat")
+        print(" Docs:       http://127.0.0.1:8001/docs")
+        print(" Health:     http://127.0.0.1:8001/health")
     print("═"*70 + "\n")
 
     await server.serve()
