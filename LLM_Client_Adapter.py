@@ -44,7 +44,7 @@ class LLMAdapter:
             if "/chat" in self.mock_base_url.lower():
                 self.base_url = self.mock_base_url
             else:
-                self.base_url = f"{self.mock_base_url.rstrip('/')}/chat/"
+                self.base_url = f"{self.mock_base_url.rstrip('/')}/chat"
             self.model_id = "mock-vulnerable-llm-v2"
         else:
             # If no API key is provided and no mock is set, this URL will be invalid, 
