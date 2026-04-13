@@ -214,3 +214,4 @@ class SuccessEvaluator:
             'average_confidence': sum(e.confidence for e in evaluations) / total if total > 0 else 0,
             'evaluations': evaluations
         }
+
