@@ -172,8 +172,8 @@ For more information, please contact our support team.
         else:
             return base_content
     
-    def create_poisoned_document(self, payload_id: str, payload: str, attack_vector: str, topic: str = None, position: str = "middle", camouflage_level: str = "medium") -> RAGDocument:
-        
+    def create_poisoned_document(self, payload_id: str, payload: str, attack_vector: str, topic: str = None,    
+                                 position: str = "middle", camouflage_level: str = "medium") -> RAGDocument:
         """
         Create a document with embedded malicious payload
         
