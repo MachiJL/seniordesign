@@ -3,16 +3,11 @@ import json
 import os
 import subprocess
 import sys
-<<<<<<< HEAD
-=======
 from urllib import request, error
->>>>>>> origin/main
 
 METRICS_FILE = os.path.join(os.path.dirname(__file__), "metrics.json")
 
 
-<<<<<<< HEAD
-=======
 def get_mock_api_status():
     target = os.getenv("TARGET_API_URL", "http://127.0.0.1:8001")
     base = target.rstrip("/")
@@ -30,7 +25,6 @@ def get_mock_api_status():
     return f"OFFLINE ({health_url})"
 
 
->>>>>>> origin/main
 def load_metrics():
     if not os.path.exists(METRICS_FILE):
         return None
@@ -45,8 +39,6 @@ def clear():
     os.system("cls" if os.name == "nt" else "clear")
 
 
-<<<<<<< HEAD
-=======
 def continuous_refresh():
     print("Entering continuous refresh mode. Press Ctrl+C to stop.")
     try:
@@ -58,20 +50,10 @@ def continuous_refresh():
         print("\nExiting continuous refresh mode.")
 
 
->>>>>>> origin/main
 def _print_metrics(start_time):
     metrics = load_metrics()
     runtime = time.time() - start_time
 
-<<<<<<< HEAD
-    print("═" * 60)
-    print("      RED TEAM ATTACK FRAMEWORK – LIVE DASHBOARD")
-    print("═" * 60)
-
-    if not metrics:
-        print("Status: Waiting for metrics data...")
-    else:
-=======
     print("═" * 70)
     print("      RED TEAM ATTACK FRAMEWORK – LIVE DASHBOARD")
     print("═" * 70)
@@ -104,7 +86,6 @@ def _print_metrics(start_time):
                 print(f"  - {severity:<28} {count}")
     else:
         # Live metrics
->>>>>>> origin/main
         total = metrics.get("total_sent", 0)
         success = metrics.get("success", 0)
         errors = metrics.get("errors", 0)
@@ -113,36 +94,6 @@ def _print_metrics(start_time):
 
         success_rate = (success / total * 100) if total > 0 else 0
 
-<<<<<<< HEAD
-        print(f"Status: RUNNING")
-        print(f"Runtime: {runtime:.1f} seconds")
-        print("-" * 60)
-        print(f"Requests Per Second (PPS): {pps}")
-        print(f"Total Requests Sent:       {total}")
-        print(f"Successful Responses:      {success}")
-        print(f"Errors:                    {errors}")
-        print(f"Success Rate:              {success_rate:.2f}%")
-        print(f"Average Latency:           {avg_latency:.2f} ms")
-        print("-" * 60)
-
-        if "last_event" in metrics:
-            print(f"Last Event: {metrics['last_event'][:150]}...")
-
-    print("═" * 60)
-
-
-def run_orchestrator(root_dir):
-    python_exe = sys.executable
-    orchestrator_path = os.path.join(root_dir, "intergrated_orchestrator.py")
-    
-    print(f"\n[DEBUG] Root directory: {root_dir}")
-    print(f"[DEBUG] Looking for orchestrator at: {orchestrator_path}")
-    
-    if not os.path.exists(orchestrator_path):
-        print(f"[ERROR] ❌ intergrated_orchestrator.py NOT FOUND!")
-        print(f"        Expected location: {orchestrator_path}")
-        print("        Make sure the file is in the main folder (one level above CLI)")
-=======
         print(f"Status       : RUNNING")
         print(f"Runtime      : {runtime:.1f} seconds")
         print("-" * 60)
@@ -171,19 +122,14 @@ def run_orchestrator(root_dir, attack_mode="combined"):
         print(f"[ERROR] ❌ Could not find intergrated_orchestrator.py")
         print(f"        Expected path: {orchestrator_path}")
         print("        Make sure the orchestrator file is in the main folder (same level as CLI folder)")
->>>>>>> origin/main
         input("\nPress Enter to continue...")
         return None
     
     print(f"[SUCCESS] Orchestrator file found. Launching...")
 
     env = os.environ.copy()
-<<<<<<< HEAD
-    env["LAUNCH_DASHBOARD"] = "0"   # Prevent recursive dashboard spawning
-=======
     env["LAUNCH_DASHBOARD"] = "0"   # Prevent recursive spawning
     env["ATTACK_MODE"] = attack_mode
->>>>>>> origin/main
 
     try:
         proc = subprocess.Popen(
@@ -194,11 +140,7 @@ def run_orchestrator(root_dir, attack_mode="combined"):
             stderr=subprocess.STDOUT,
             text=True
         )
-<<<<<<< HEAD
-        print(f"[SUCCESS] ✅ Orchestrator started successfully! PID: {proc.pid}")
-=======
         print(f"[SUCCESS] ✅ Orchestrator started! PID: {proc.pid}")
->>>>>>> origin/main
         return proc
     except Exception as e:
         print(f"[ERROR] Failed to start orchestrator: {e}")
@@ -211,21 +153,11 @@ def main():
     start_time = time.time()
     orchestrator_proc = None
 
-<<<<<<< HEAD
-    print(f"[INFO] Dashboard started. Root folder detected as: {root_dir}")
-=======
     print(f"[INFO] Dashboard started. Root folder: {root_dir}\n")
->>>>>>> origin/main
 
     try:
         while True:
             clear()
-<<<<<<< HEAD
-            print("1) Start integrated attack sprint")
-            print("2) Stop running attack")
-            print("3) Refresh metrics")
-            print("4) Exit")
-=======
             print("1) Start automated script attack")
             print("2) Start tool abuse attack")
             print("3) Start combined attack sprint")
@@ -234,35 +166,17 @@ def main():
             print("6) Refresh display")
             print("7) Continuous refresh mode")
             print("8) Exit")
->>>>>>> origin/main
             print("")
 
             if orchestrator_proc and orchestrator_proc.poll() is None:
                 print(f"[Orchestrator] ✅ Running — PID: {orchestrator_proc.pid}")
             elif orchestrator_proc:
-<<<<<<< HEAD
-                print("[Orchestrator] Finished or stopped.")
-=======
                 print("[Orchestrator] Stopped or finished.")
->>>>>>> origin/main
 
             _print_metrics(start_time)
 
             choice = input("Select an option: ").strip()
 
-<<<<<<< HEAD
-            if choice == "1":
-                if orchestrator_proc and orchestrator_proc.poll() is None:
-                    input("Orchestrator is already running. Press Enter...")
-                else:
-                    orchestrator_proc = run_orchestrator(root_dir)
-                    input("\nPress Enter to continue...")
-
-            elif choice == "2":
-                if orchestrator_proc and orchestrator_proc.poll() is None:
-                    orchestrator_proc.terminate()
-                    orchestrator_proc.wait(timeout=5)
-=======
             if choice in {"1", "2", "3"}:
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     input("Orchestrator is already running. Press Enter...")
@@ -283,25 +197,11 @@ def main():
                         orchestrator_proc.wait(timeout=5)
                     except:
                         pass
->>>>>>> origin/main
                     print("Orchestrator terminated.")
                     input("Press Enter to continue...")
                 else:
                     input("No orchestrator is running. Press Enter...")
 
-<<<<<<< HEAD
-            elif choice == "3":
-                print("Metrics refreshed.")
-                input("Press Enter to continue...")
-
-            elif choice == "4":
-                if orchestrator_proc and orchestrator_proc.poll() is None:
-                    orchestrator_proc.terminate()
-                break
-
-            else:
-                input("Unknown option. Press Enter to continue...")
-=======
             elif choice == "5":
                 if os.path.exists(METRICS_FILE):
                     os.remove(METRICS_FILE)
@@ -321,16 +221,11 @@ def main():
 
             else:
                 input("Unknown option. Press Enter to return...")
->>>>>>> origin/main
 
     except KeyboardInterrupt:
         if orchestrator_proc and orchestrator_proc.poll() is None:
             orchestrator_proc.terminate()
-<<<<<<< HEAD
-        print("\nDashboard stopped.")
-=======
         print("\nDashboard stopped by user.")
->>>>>>> origin/main
 
 
 if __name__ == "__main__":
