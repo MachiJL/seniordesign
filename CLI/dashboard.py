@@ -11,9 +11,8 @@ METRICS_FILE = os.path.join(os.path.dirname(__file__), "metrics.json")
 LOG_BUFFER = deque(maxlen=20)  # Keep the last 20 lines of orchestrator output for better visibility
 
 
-def get_mock_api_status():
-    target = os.getenv("TARGET_API_URL", "http://127.0.0.1:8001")
-    base = target.rstrip("/")
+def get_mock_api_status(target_url):
+    base = target_url.rstrip("/")
     if base.endswith("/chat"):
         base = base[:-5]
     health_url = f"{base}/health"
@@ -54,7 +53,7 @@ def log_reader(proc):
         proc.stdout.close()
 
 
-def continuous_refresh(start_time, proc=None):
+def continuous_refresh(start_time, target_url, proc=None):
     if proc:
         # Clear buffer for new run
         LOG_BUFFER.clear()
@@ -65,7 +64,7 @@ def continuous_refresh(start_time, proc=None):
     try:
         while True:
             clear()
-            _print_metrics(start_time, list(LOG_BUFFER))
+            _print_metrics(start_time, target_url, list(LOG_BUFFER))
             if proc and proc.poll() is not None:
                 print("\n[INFO] Orchestrator has finished execution.")
                 input("Press Enter to return to menu...")
@@ -75,14 +74,14 @@ def continuous_refresh(start_time, proc=None):
         print("\nExiting continuous refresh mode.")
 
 
-def _print_metrics(start_time, logs=None):
+def _print_metrics(start_time, target_url, logs=None):
     metrics = load_metrics()
     runtime = time.time() - start_time
 
     print("=" * 70)
     print("             AEGIS BREAKER - LIVE DASHBOARD")
     print("=" * 70)
-    print(f"Mock API Status: {get_mock_api_status()}")
+    print(f"Mock API Status: {get_mock_api_status(target_url)}")
 
     if not metrics:
         print("Status: Waiting for metrics data...")
@@ -134,7 +133,7 @@ def _print_metrics(start_time, logs=None):
     print("=" * 70)
 
 
-def run_orchestrator(root_dir, attack_mode="combined"):
+def run_orchestrator(root_dir, attack_mode="combined", target_url=None, target_api_key=None):
     python_exe = sys.executable
     orchestrator_path = os.path.join(root_dir, "intergrated_orchestrator.py")
     
@@ -153,6 +152,8 @@ def run_orchestrator(root_dir, attack_mode="combined"):
     env = os.environ.copy()
     env["LAUNCH_DASHBOARD"] = "0"   # Prevent recursive spawning
     env["ATTACK_MODE"] = attack_mode
+    if target_url: env["TARGET_API_URL"] = target_url
+    if target_api_key: env["TARGET_API_KEY"] = target_api_key
     env["PYTHONUNBUFFERED"] = "1"   # Force real-time log flushing
 
     try:
@@ -179,7 +180,11 @@ def main():
     start_time = time.time()
     orchestrator_proc = None
 
-    print(f"[INFO] Dashboard started. Root folder: {root_dir}\n")
+    # Load initial target configuration
+    target_url = os.getenv("TARGET_API_URL", "http://127.0.0.1:8001")
+    target_api_key = os.getenv("TARGET_API_KEY", "cyborgs-local-client-key")
+
+    print(f"[INFO] Aegis Breaker Dashboard started. Root folder: {root_dir}\n")
 
     try:
         while True:
@@ -187,11 +192,13 @@ def main():
             print("1) Start automated script attack")
             print("2) Start tool abuse attack")
             print("3) Start combined attack sprint")
-            print("4) Stop running attack")
-            print("5) Reset metrics")
-            print("6) Refresh display")
-            print("7) Continuous refresh mode")
-            print("8) Exit")
+            print("4) Start RAG injection attack")
+            print("5) Stop running attack")
+            print("6) Reset metrics")
+            print("7) Refresh display")
+            print("8) Continuous refresh mode")
+            print("9) Exit")
+            print("10) Configure Target API (URL/Key)")
             print("")
 
             if orchestrator_proc and orchestrator_proc.poll() is None:
@@ -199,11 +206,11 @@ def main():
             elif orchestrator_proc:
                 print("[Orchestrator] Stopped or finished.")
 
-            _print_metrics(start_time)
+            _print_metrics(start_time, target_url)
 
             choice = input("Select an option: ").strip()
 
-            if choice in {"1", "2", "3"}:
+            if choice in {"1", "2", "3", "4"}:
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     input("Orchestrator is already running. Press Enter...")
                 else:
@@ -211,14 +218,15 @@ def main():
                         "1": "script",
                         "2": "tool",
                         "3": "combined",
+                        "4": "rag"
                     }
                     selected_mode = mode_map[choice]
-                    orchestrator_proc = run_orchestrator(root_dir, selected_mode)
+                    orchestrator_proc = run_orchestrator(root_dir, selected_mode, target_url, target_api_key)
                     if orchestrator_proc:
                         start_time = time.time()
-                        continuous_refresh(start_time, orchestrator_proc)
+                        continuous_refresh(start_time, target_url, orchestrator_proc)
 
-            elif choice == "4":
+            elif choice == "5":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     orchestrator_proc.terminate()
                     orchestrator_proc.wait()
@@ -228,24 +236,33 @@ def main():
                 else:
                     input("No orchestrator is running. Press Enter...")
 
-            elif choice == "5":
+            elif choice == "6":
                 if os.path.exists(METRICS_FILE):
                     os.remove(METRICS_FILE)
                 start_time = time.time()
                 LOG_BUFFER.clear()
                 input("Metrics reset. Press Enter to return...")
 
-            elif choice == "6":
+            elif choice == "7":
                 input("Display refreshed. Press Enter to return...")
 
-            elif choice == "7":
-                continuous_refresh(start_time)
-
             elif choice == "8":
+                continuous_refresh(start_time, target_url)
+
+            elif choice == "9":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     orchestrator_proc.terminate()
                 print("\nDashboard closed.")
                 break
+
+            elif choice == "10":
+                print(f"\n[CONFIG] Current URL: {target_url}")
+                u = input("Enter new Target URL (leave blank to keep): ").strip()
+                if u: target_url = u
+                print(f"[CONFIG] Current Key: {target_api_key}")
+                k = input("Enter new API Key (leave blank to keep): ").strip()
+                if k: target_api_key = k
+                input("\nSettings updated. Press Enter to return...")
 
             else:
                 input("Unknown option. Press Enter to return...")
