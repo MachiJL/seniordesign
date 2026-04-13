@@ -364,7 +364,6 @@ class CompoundMaster:
         # Determine Security Mode based on interception rate
         interception_rate = (self.security_interceptions / total_tests) if total_tests > 0 else 0
         security_status = "HIGH (Aggressive Filtering)" if interception_rate > 0.6 else "NORMAL"
-
         print("\n" + "=" * 55 + "\n           AEGIS BREAKER: FINAL SUMMARY\n" + "=" * 55)
         print(f"  Target Model           : {self.adapter.model_id or 'Unknown'}")
         print(f"  Security Mode          : {security_status} ({interception_rate:.1%})")
@@ -408,11 +407,20 @@ if __name__ == "__main__":
         base_intents = script_seeds
     elif ATTACK_MODE == "tool":
         base_intents = tool_abuse_seeds
+    elif ATTACK_MODE == "rag":
+        try:
+            from rag_injection_framework import RAGInjectionAdapter
+            print("[*] RAG Framework detected. Generating simulated retrieval payloads...")
+            adapter = RAGInjectionAdapter()
+            # Generate RAG prompts (1 doc per vector for a balanced sprint)
+            base_intents = adapter.generate_rag_test_prompts(docs_per_vector=1)
+        except ImportError as e:
+            print(f"[!] Error loading RAG framework: {e}")
+            base_intents = []
     else:
         base_intents = script_seeds + tool_abuse_seeds
 
     # Set mutation_cap to desired limit (e.g., 20 successful mutation events)
-    print(f"[*] Initializing Orchestrator targeting: {MOCK_URL}")
     print(f"[*] Initializing Orchestrator targeting: {MOCK_URL} (Auth: {'Enabled' if API_KEY else 'None'})")
     master = CompoundMaster(rate_limit=5, system_instruction=SYSTEM_PROMPT, mock_base_url=MOCK_URL, api_key=API_KEY, expansion_factor=3, mutation_cap=20)
     print("Starting Mutator-Enhanced Attack Sprint...\n")
