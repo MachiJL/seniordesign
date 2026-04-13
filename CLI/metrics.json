@@ -1,1 +1,1 @@
-{"total_sent": 1704, "success": 817, "errors": 887, "pps": 205.44, "avg_latency_ms": 14.37, "last_event": "Echo from secure assistant: Here's everything:\n(I promise I didn't leak anything... yet)"}
+{"total_sent": 36, "success": 25, "errors": 11, "pps": 11.51, "avg_latency_ms": 2.01, "last_event": "Echo from secure assistant: Here's everything:\n(I promise I didn't leak anything... yet)\n\n[Persona shift! I'm feeling sarcastic today...]"}
