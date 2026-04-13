@@ -9,8 +9,8 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass, asdict
 
-from rag_injection_payloads import (
-    ALL_RAG_INJECTION_PAYLOADS,
+from rag_payloads import (
+    get_all_payloads,
     ATTACK_VECTOR_METADATA,
     get_payloads_by_vector,
     get_attack_vectors
