@@ -25,6 +25,29 @@ def get_mock_api_status():
     return f"OFFLINE ({health_url})"
 
 
+def check_target_chat_endpoint():
+    """Verify the target chat endpoint is reachable, not just /health."""
+    target = os.getenv("TARGET_API_URL", "http://127.0.0.1:8001")
+    base = target.rstrip("/")
+    if base.endswith("/chat"):
+        chat_url = base
+    else:
+        chat_url = f"{base}/chat"
+
+    payload = json.dumps({"message": "ping", "session_id": "dashboard-preflight"}).encode("utf-8")
+    req = request.Request(
+        chat_url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with request.urlopen(req, timeout=2.5) as resp:
+            return resp.status == 200, chat_url
+    except Exception:
+        return False, chat_url
+
+
 def load_metrics():
     if not os.path.exists(METRICS_FILE):
         return None
@@ -39,15 +62,19 @@ def clear():
     os.system("cls" if os.name == "nt" else "clear")
 
 
-def continuous_refresh():
+def continuous_refresh(start_time=None):
+    if start_time is None:
+        start_time = time.time()
     print("Entering continuous refresh mode. Press Ctrl+C to stop.")
     try:
         while True:
             clear()
-            _print_metrics(time.time())  # Use current time for runtime
+            _print_metrics(start_time)
+            print("\n[Press Ctrl+C to return to menu]")
             time.sleep(2)
     except KeyboardInterrupt:
-        print("\nExiting continuous refresh mode.")
+        print("\nReturning to menu...")
+        time.sleep(0.5)
 
 
 def _print_metrics(start_time):
@@ -131,16 +158,32 @@ def run_orchestrator(root_dir, attack_mode="combined"):
     env["LAUNCH_DASHBOARD"] = "0"   # Prevent recursive spawning
     env["ATTACK_MODE"] = attack_mode
 
+    target_ok, chat_url = check_target_chat_endpoint()
+    if not target_ok:
+        print(f"[WARN] Target chat endpoint is not reachable: {chat_url}")
+        print("       Start Mock_API.py (or set TARGET_API_URL correctly) before launching attacks.")
+        input("\nPress Enter to continue...")
+        return None
+
     try:
         proc = subprocess.Popen(
             [python_exe, orchestrator_path],
             cwd=root_dir,
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True
+            stdout=None,
+            stderr=None,
+            text=True,
+            creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0,
         )
         print(f"[SUCCESS] ✅ Orchestrator started! PID: {proc.pid}")
+
+        # Give immediate feedback if process crashes on startup.
+        time.sleep(0.7)
+        if proc.poll() is not None:
+            print("[ERROR] Orchestrator exited immediately. Check the spawned console for traceback.")
+            input("\nPress Enter to continue...")
+            return None
+
         return proc
     except Exception as e:
         print(f"[ERROR] Failed to start orchestrator: {e}")
@@ -188,7 +231,13 @@ def main():
                     }
                     selected_mode = mode_map[choice]
                     orchestrator_proc = run_orchestrator(root_dir, selected_mode)
-                    input(f"Orchestrator started in '{selected_mode}' mode. Press Enter to continue...")
+                    if orchestrator_proc:
+                        start_time = time.time()
+                        print(f"Orchestrator started in '{selected_mode}' mode. Entering live monitor...")
+                        time.sleep(1)
+                        continuous_refresh(start_time)
+                    else:
+                        input("Press Enter to continue...")
 
             elif choice == "4":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
@@ -211,7 +260,7 @@ def main():
                 input("Display refreshed. Press Enter to return...")
 
             elif choice == "7":
-                continuous_refresh()
+                continuous_refresh(start_time)
 
             elif choice == "8":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
