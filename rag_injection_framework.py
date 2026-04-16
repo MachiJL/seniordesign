@@ -433,8 +433,7 @@ class RAGEvaluationEnhancer:
 async def run_rag_injection_tests_with_orchestrator(
     orchestrator,
     attack_vectors: List[str] = None,
-    docs_per_vector: int = 2,
-    expansion_factor: int = 0
+    docs_per_vector: int = 2
 ):
     """
     Run RAG injection tests using the CompoundMaster orchestrator
@@ -443,7 +442,6 @@ async def run_rag_injection_tests_with_orchestrator(
         orchestrator: Instance of CompoundMaster from integrated_orchestrator.py
         attack_vectors: Which vectors to test (None = all)
         docs_per_vector: Number of documents per attack vector
-        expansion_factor: Whether to use mutator expansion
     """
     print("\n" + "="*70)
     print("RAG INJECTION TEST SUITE")
