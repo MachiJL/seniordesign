@@ -133,7 +133,7 @@ def _print_metrics(start_time, target_url, logs=None):
     print("=" * 70)
 
 
-def run_orchestrator(root_dir, attack_mode="combined", target_url=None, target_api_key=None):
+def run_orchestrator(root_dir, attack_mode="combined", target_url=None, target_api_key=None, interactive=False):
     python_exe = sys.executable
     orchestrator_path = os.path.join(root_dir, "intergrated_orchestrator.py")
     
@@ -157,13 +157,18 @@ def run_orchestrator(root_dir, attack_mode="combined", target_url=None, target_a
     env["PYTHONUNBUFFERED"] = "1"   # Force real-time log flushing
 
     try:
-        # Capture stdout/stderr to pipe them into the dashboard terminal
+        if interactive:
+            # In interactive mode, we don't pipe so the child process can use the terminal
+            stdout, stderr = None, None
+        else:
+            stdout, stderr = subprocess.PIPE, subprocess.STDOUT
+
         proc = subprocess.Popen(
             [python_exe, orchestrator_path],
             cwd=root_dir,
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stdout=stdout,
+            stderr=stderr,
             text=True,
             bufsize=1
         )
@@ -221,10 +226,17 @@ def main():
                         "4": "rag"
                     }
                     selected_mode = mode_map[choice]
-                    orchestrator_proc = run_orchestrator(root_dir, selected_mode, target_url, target_api_key)
+                    is_interactive = (selected_mode == "rag")
+                    orchestrator_proc = run_orchestrator(root_dir, selected_mode, target_url, target_api_key, is_interactive)
                     if orchestrator_proc:
-                        start_time = time.time()
-                        continuous_refresh(start_time, target_url, orchestrator_proc)
+                        start_time = time.time() # Reset start time for new run
+                        if selected_mode == "rag":
+                            # RAG mode needs interaction for the menu, so we wait instead of refresh
+                            print("[INFO] RAG Mode: Use the menu below. Dashboard refresh disabled for interaction.")
+                            orchestrator_proc.wait()
+                            input("\nAttack finished. Press Enter to return to menu...")
+                        else:
+                            continuous_refresh(start_time, target_url, orchestrator_proc)
 
             elif choice == "5":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
