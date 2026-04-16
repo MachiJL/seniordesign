@@ -3,14 +3,16 @@ import json
 import os
 import subprocess
 import sys
+import threading
+from collections import deque
 from urllib import request, error
 
 METRICS_FILE = os.path.join(os.path.dirname(__file__), "metrics.json")
+LOG_BUFFER = deque(maxlen=20)  # Keep the last 20 lines of orchestrator output for better visibility
 
 
-def get_mock_api_status():
-    target = os.getenv("TARGET_API_URL", "http://127.0.0.1:8001")
-    base = target.rstrip("/")
+def get_mock_api_status(target_url):
+    base = target_url.rstrip("/")
     if base.endswith("/chat"):
         base = base[:-5]
     health_url = f"{base}/health"
@@ -62,83 +64,100 @@ def clear():
     os.system("cls" if os.name == "nt" else "clear")
 
 
-def continuous_refresh(start_time=None):
-    if start_time is None:
-        start_time = time.time()
+def log_reader(proc):
+    """Thread function to read lines from orchestrator stdout."""
+    try:
+        for line in iter(proc.stdout.readline, ''):
+            if line:
+                LOG_BUFFER.append(line.strip())
+    except Exception:
+        pass
+    finally:
+        proc.stdout.close()
+
+
+def continuous_refresh(start_time, target_url, proc=None):
+    if proc:
+        # Clear buffer for new run
+        LOG_BUFFER.clear()
+        t = threading.Thread(target=log_reader, args=(proc,), daemon=True)
+        t.start()
+
     print("Entering continuous refresh mode. Press Ctrl+C to stop.")
     try:
         while True:
             clear()
-            _print_metrics(start_time)
-            print("\n[Press Ctrl+C to return to menu]")
-            time.sleep(2)
+            _print_metrics(start_time, target_url, list(LOG_BUFFER))
+            if proc and proc.poll() is not None:
+                print("\n[INFO] Orchestrator has finished execution.")
+                input("Press Enter to return to menu...")
+                break
+            time.sleep(0.5) # Faster refresh for real-time feel
     except KeyboardInterrupt:
         print("\nReturning to menu...")
         time.sleep(0.5)
 
 
-def _print_metrics(start_time):
+def _print_metrics(start_time, target_url, logs=None):
     metrics = load_metrics()
     runtime = time.time() - start_time
 
-    print("═" * 70)
-    print("      RED TEAM ATTACK FRAMEWORK – LIVE DASHBOARD")
-    print("═" * 70)
-    print(f"Mock API Status: {get_mock_api_status()}")
+    print("=" * 70)
+    print("             AEGIS BREAKER - LIVE DASHBOARD")
+    print("=" * 70)
+    print(f"Mock API Status: {get_mock_api_status(target_url)}")
 
     if not metrics:
         print("Status: Waiting for metrics data...")
-    elif "final_summary" in metrics:
-        # Display final summary
-        fs = metrics["final_summary"]
-        print("Status: COMPLETED")
-        print("-" * 60)
-        print(f"Target Model           : {fs.get('target_model', 'Unknown')}")
-        print(f"Total tests run        : {fs.get('total_tests', 0)} (inc. auto-mutations)")
-        print(f"Successful Bypasses    : {fs.get('successful_bypasses', 0)}")
-        print(f"Success rate           : {fs.get('success_rate', 0):.1%}")
-        print(f"Average confidence     : {fs.get('average_confidence', 0):.2f}")
-        print(f"Avg API Latency        : {fs.get('avg_api_latency', 0):.2f}s")
-        print(f"Total duration         : {fs.get('total_duration', 0):.2f}s")
-        print(f"Worker Health          : {fs.get('worker_health', 'Unknown')}")
-        attack_dist = fs.get("attack_type_distribution", {})
-        if attack_dist:
-            print("Attack type distribution:")
-            for attack_type, count in attack_dist.items():
-                print(f"  - {attack_type:<28} {count}")
-        severity_dist = fs.get("severity_distribution", {})
-        if severity_dist:
-            print("Severity distribution :")
-            for severity, count in severity_dist.items():
-                print(f"  - {severity:<28} {count}")
     else:
-        # Live metrics
-        total = metrics.get("total_sent", 0)
-        success = metrics.get("success", 0)
-        errors = metrics.get("errors", 0)
-        pps = metrics.get("pps", 0)
-        avg_latency = metrics.get("avg_latency_ms", 0)
+        is_final = "final_summary" in metrics
+        data = metrics["final_summary"] if is_final else metrics
+        
+        status = "COMPLETED" if is_final else "RUNNING"
+        total = data.get("total_tests") if is_final else data.get("total_sent", 0)
+        success = data.get("successful_bypasses") if is_final else data.get("success", 0)
+        # Convert seconds to ms if final, else use stored ms
+        latency = (data.get("avg_api_latency", 0) * 1000) if is_final else data.get("avg_latency_ms", 0)
+        success_rate = (data.get("success_rate", 0) * 100) if is_final else ((success / total * 100) if total > 0 else 0)
 
-        success_rate = (success / total * 100) if total > 0 else 0
-
-        print(f"Status       : RUNNING")
-        print(f"Runtime      : {runtime:.1f} seconds")
+        print(f"Status       : {status}")
+        print(f"Target Model : {data.get('target_model', 'mock-vulnerable-llm-v2')}")
+        print(f"Runtime      : {data.get('total_duration', runtime) if is_final else runtime:.1f}s")
         print("-" * 60)
-        print(f"Requests/sec (PPS)     : {pps}")
-        print(f"Total Requests Sent    : {total}")
+        
+        print(f"Total Requests         : {total}")
         print(f"Successful Bypasses    : {success}")
-        print(f"Errors                 : {errors}")
         print(f"Success Rate           : {success_rate:.2f}%")
-        print(f"Average Latency        : {avg_latency:.2f} ms")
+        print(f"Avg API Latency        : {latency:.2f} ms")
+        
+        if is_final:
+            print(f"Worker Health          : {data.get('worker_health', 'Unknown')}")
+            attack_dist = data.get("attack_type_distribution", {})
+            if attack_dist:
+                print("\nAttack Type Distribution:")
+                for attack_type, count in attack_dist.items():
+                    print(f"  - {attack_type:<25} {count}")
+            severity_dist = data.get("severity_distribution", {})
+            if severity_dist:
+                print("\nSeverity Distribution:")
+                for severity, count in severity_dist.items():
+                    print(f"  - {severity:<25} {count}")
+        else:
+            print(f"Requests/sec (PPS)     : {data.get('pps', 0)}")
+            if data.get("last_event"):
+                print("-" * 60)
+                print(f"Last Event   : {data['last_event'][:140]}...")
+
+    if logs:
         print("-" * 60)
+        print("RECENT ATTACK LOGS:")
+        for log in logs:
+            print(f"  > {log}")
 
-        if "last_event" in metrics and metrics["last_event"]:
-            print(f"Last Event   : {metrics['last_event'][:140]}...")
-
-    print("═" * 70)
+    print("=" * 70)
 
 
-def run_orchestrator(root_dir, attack_mode="combined"):
+def run_orchestrator(root_dir, attack_mode="combined", target_url=None, target_api_key=None):
     python_exe = sys.executable
     orchestrator_path = os.path.join(root_dir, "intergrated_orchestrator.py")
     
@@ -157,23 +176,20 @@ def run_orchestrator(root_dir, attack_mode="combined"):
     env = os.environ.copy()
     env["LAUNCH_DASHBOARD"] = "0"   # Prevent recursive spawning
     env["ATTACK_MODE"] = attack_mode
-
-    target_ok, chat_url = check_target_chat_endpoint()
-    if not target_ok:
-        print(f"[WARN] Target chat endpoint is not reachable: {chat_url}")
-        print("       Start Mock_API.py (or set TARGET_API_URL correctly) before launching attacks.")
-        input("\nPress Enter to continue...")
-        return None
+    if target_url: env["TARGET_API_URL"] = target_url
+    if target_api_key: env["TARGET_API_KEY"] = target_api_key
+    env["PYTHONUNBUFFERED"] = "1"   # Force real-time log flushing
 
     try:
+        # Capture stdout/stderr to pipe them into the dashboard terminal
         proc = subprocess.Popen(
             [python_exe, orchestrator_path],
             cwd=root_dir,
             env=env,
-            stdout=None,
-            stderr=None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0,
+            bufsize=1
         )
         print(f"[SUCCESS] ✅ Orchestrator started! PID: {proc.pid}")
 
@@ -196,7 +212,11 @@ def main():
     start_time = time.time()
     orchestrator_proc = None
 
-    print(f"[INFO] Dashboard started. Root folder: {root_dir}\n")
+    # Load initial target configuration
+    target_url = os.getenv("TARGET_API_URL", "http://127.0.0.1:8001")
+    target_api_key = os.getenv("TARGET_API_KEY", "cyborgs-local-client-key")
+
+    print(f"[INFO] Aegis Breaker Dashboard started. Root folder: {root_dir}\n")
 
     try:
         while True:
@@ -204,11 +224,13 @@ def main():
             print("1) Start automated script attack")
             print("2) Start tool abuse attack")
             print("3) Start combined attack sprint")
-            print("4) Stop running attack")
-            print("5) Reset metrics")
-            print("6) Refresh display")
-            print("7) Continuous refresh mode")
-            print("8) Exit")
+            print("4) Start RAG injection attack")
+            print("5) Stop running attack")
+            print("6) Reset metrics")
+            print("7) Refresh display")
+            print("8) Continuous refresh mode")
+            print("9) Exit")
+            print("10) Configure Target API (URL/Key)")
             print("")
 
             if orchestrator_proc and orchestrator_proc.poll() is None:
@@ -216,11 +238,11 @@ def main():
             elif orchestrator_proc:
                 print("[Orchestrator] Stopped or finished.")
 
-            _print_metrics(start_time)
+            _print_metrics(start_time, target_url)
 
             choice = input("Select an option: ").strip()
 
-            if choice in {"1", "2", "3"}:
+            if choice in {"1", "2", "3", "4"}:
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     input("Orchestrator is already running. Press Enter...")
                 else:
@@ -228,45 +250,51 @@ def main():
                         "1": "script",
                         "2": "tool",
                         "3": "combined",
+                        "4": "rag"
                     }
                     selected_mode = mode_map[choice]
-                    orchestrator_proc = run_orchestrator(root_dir, selected_mode)
+                    orchestrator_proc = run_orchestrator(root_dir, selected_mode, target_url, target_api_key)
                     if orchestrator_proc:
                         start_time = time.time()
-                        print(f"Orchestrator started in '{selected_mode}' mode. Entering live monitor...")
-                        time.sleep(1)
-                        continuous_refresh(start_time)
-                    else:
-                        input("Press Enter to continue...")
+                        continuous_refresh(start_time, target_url, orchestrator_proc)
 
-            elif choice == "4":
+            elif choice == "5":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     orchestrator_proc.terminate()
-                    try:
-                        orchestrator_proc.wait(timeout=5)
-                    except:
-                        pass
-                    print("Orchestrator terminated.")
+                    orchestrator_proc.wait()
+                    print("[INFO] Attack sprint stopped mid-way.")
+                    # Force refresh file to reflect final state before termination
                     input("Press Enter to continue...")
                 else:
                     input("No orchestrator is running. Press Enter...")
 
-            elif choice == "5":
+            elif choice == "6":
                 if os.path.exists(METRICS_FILE):
                     os.remove(METRICS_FILE)
+                start_time = time.time()
+                LOG_BUFFER.clear()
                 input("Metrics reset. Press Enter to return...")
 
-            elif choice == "6":
+            elif choice == "7":
                 input("Display refreshed. Press Enter to return...")
 
-            elif choice == "7":
-                continuous_refresh(start_time)
-
             elif choice == "8":
+                continuous_refresh(start_time, target_url)
+
+            elif choice == "9":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     orchestrator_proc.terminate()
                 print("\nDashboard closed.")
                 break
+
+            elif choice == "10":
+                print(f"\n[CONFIG] Current URL: {target_url}")
+                u = input("Enter new Target URL (leave blank to keep): ").strip()
+                if u: target_url = u
+                print(f"[CONFIG] Current Key: {target_api_key}")
+                k = input("Enter new API Key (leave blank to keep): ").strip()
+                if k: target_api_key = k
+                input("\nSettings updated. Press Enter to return...")
 
             else:
                 input("Unknown option. Press Enter to return...")
