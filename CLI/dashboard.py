@@ -10,6 +10,28 @@ from urllib import request, error
 METRICS_FILE = os.path.join(os.path.dirname(__file__), "metrics.json")
 LOG_BUFFER = deque(maxlen=20)  # Keep the last 20 lines of orchestrator output for better visibility
 
+BANNER = r"""
+   ___             _      ___                _            
+  / _ \___ ___ _ (_)___ / _ )_______ ___ _ / /_____ ____ 
+ / __ / -_) _ `/ / (_-< / _  / __/ -_) _ `//  '_/ -_) __/ 
+/_/ |_\___\_, / /_//___/____/_/  \__/\_,_//_/\_\\__/_/    
+         /___/                                            
+                  ___
+                 |   |
+              _  |   |  _
+             | |_|   |_| |
+             |           |
+             |___|###|___|
+              \_       _/
+                | [ ] |
+                |     |   / \ / \
+                |     |  (   X   )
+                |     |   \ / \ /
+                |     |    /   \
+                |     |
+                \_____/
+"""
+
 
 def get_mock_api_status(target_url):
     base = target_url.rstrip("/")
@@ -44,6 +66,8 @@ def clear():
 def log_reader(proc):
     """Thread function to read lines from orchestrator stdout."""
     try:
+        if proc.stdout is None:
+            return
         for line in iter(proc.stdout.readline, ''):
             if line:
                 LOG_BUFFER.append(line.strip())
@@ -64,6 +88,7 @@ def continuous_refresh(start_time, target_url, proc=None):
     try:
         while True:
             clear()
+            print(BANNER)
             _print_metrics(start_time, target_url, list(LOG_BUFFER))
             if proc and proc.poll() is not None:
                 print("\n[INFO] Orchestrator has finished execution.")
@@ -92,11 +117,13 @@ def _print_metrics(start_time, target_url, logs=None):
         status = "COMPLETED" if is_final else "RUNNING"
         total = data.get("total_tests") if is_final else data.get("total_sent", 0)
         success = data.get("successful_bypasses") if is_final else data.get("success", 0)
+        category = data.get("category", "General")
         # Convert seconds to ms if final, else use stored ms
         latency = (data.get("avg_api_latency", 0) * 1000) if is_final else data.get("avg_latency_ms", 0)
         success_rate = (data.get("success_rate", 0) * 100) if is_final else ((success / total * 100) if total > 0 else 0)
 
         print(f"Status       : {status}")
+        print(f"Attack Type  : {category}")
         print(f"Target Model : {data.get('target_model', 'mock-vulnerable-llm-v2')}")
         print(f"Runtime      : {data.get('total_duration', runtime) if is_final else runtime:.1f}s")
         print("-" * 60)
@@ -110,14 +137,15 @@ def _print_metrics(start_time, target_url, logs=None):
             print(f"Worker Health          : {data.get('worker_health', 'Unknown')}")
             attack_dist = data.get("attack_type_distribution", {})
             if attack_dist:
-                print("\nAttack Type Distribution:")
+                print("\nDetection Analytics (Success Indicators Detected):")
                 for attack_type, count in attack_dist.items():
                     print(f"  - {attack_type:<25} {count}")
             severity_dist = data.get("severity_distribution", {})
             if severity_dist:
-                print("\nSeverity Distribution:")
-                for severity, count in severity_dist.items():
-                    print(f"  - {severity:<25} {count}")
+                print("\nRisk Assessment (Severity Distribution):")
+                for severity in ['critical', 'high', 'medium', 'low']:
+                    count = severity_dist.get(severity, 0)
+                    print(f"  - {severity.upper():<25} {count}")
         else:
             print(f"Requests/sec (PPS)     : {data.get('pps', 0)}")
             if data.get("last_event"):
@@ -194,18 +222,7 @@ def main():
     try:
         while True:
             clear()
-            print("1) Start automated script attack")
-            print("2) Start tool abuse attack")
-            print("3) Start combined attack sprint")
-            print("4) Start RAG injection attack")
-            print("5) Stop running attack")
-            print("6) Reset metrics")
-            print("7) Refresh display")
-            print("8) Continuous refresh mode")
-            print("9) Exit")
-            print("10) Configure Target API (URL/Key)")
-            print("")
-
+            print(BANNER)
             if orchestrator_proc and orchestrator_proc.poll() is None:
                 print(f"[Orchestrator] ✅ Running — PID: {orchestrator_proc.pid}")
             elif orchestrator_proc:
@@ -213,61 +230,58 @@ def main():
 
             _print_metrics(start_time, target_url)
 
+            print("1) Start automated script attack")
+            print("2) Start tool abuse attack")
+            print("3) Start RAG injection attack")
+            print("4) Start combined attack sprint")
+            print("5) Stop running attack")
+            print("6) Reset metrics")
+            print("7) Refresh display")
+            print("8) Continuous refresh mode")
+            print("9) Configure Target API (URL/Key)")
+            print("10) Exit")
+            print("")
+
             choice = input("Select an option: ").strip()
 
             if choice in {"1", "2", "3", "4"}:
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     input("Orchestrator is already running. Press Enter...")
-                else:
-                    mode_map = {
-                        "1": "script",
-                        "2": "tool",
-                        "3": "combined",
-                        "4": "rag"
-                    }
-                    selected_mode = mode_map[choice]
-                    is_interactive = (selected_mode == "rag")
-                    orchestrator_proc = run_orchestrator(root_dir, selected_mode, target_url, target_api_key, is_interactive)
-                    if orchestrator_proc:
-                        start_time = time.time() # Reset start time for new run
-                        if selected_mode == "rag":
-                            # RAG mode needs interaction for the menu, so we wait instead of refresh
-                            print("[INFO] RAG Mode: Use the menu below. Dashboard refresh disabled for interaction.")
-                            orchestrator_proc.wait()
-                            input("\nAttack finished. Press Enter to return to menu...")
-                        else:
-                            continuous_refresh(start_time, target_url, orchestrator_proc)
+                    continue
+
+                mode_map = {"1": "script", "2": "tool", "3": "rag", "4": "combined"}
+                selected_mode = mode_map[choice]
+                # All current modes are interactive, requiring terminal input for menus or configuration
+                orchestrator_proc = run_orchestrator(root_dir, selected_mode, target_url, target_api_key, interactive=True)
+                if orchestrator_proc:
+                    start_time = time.time()
+                    print(f"[INFO] {selected_mode.upper()} Mode active. Interaction required in orchestrator console.")
+                    orchestrator_proc.wait()
+                    input("\nAttack finished. Press Enter to return to menu...")
 
             elif choice == "5":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     orchestrator_proc.terminate()
                     orchestrator_proc.wait()
                     print("[INFO] Attack sprint stopped mid-way.")
-                    # Force refresh file to reflect final state before termination
                     input("Press Enter to continue...")
                 else:
                     input("No orchestrator is running. Press Enter...")
 
             elif choice == "6":
-                if os.path.exists(METRICS_FILE):
-                    os.remove(METRICS_FILE)
+                try: os.remove(METRICS_FILE)
+                except OSError: pass
                 start_time = time.time()
                 LOG_BUFFER.clear()
                 input("Metrics reset. Press Enter to return...")
 
             elif choice == "7":
-                input("Display refreshed. Press Enter to return...")
+                pass
 
             elif choice == "8":
                 continuous_refresh(start_time, target_url)
 
             elif choice == "9":
-                if orchestrator_proc and orchestrator_proc.poll() is None:
-                    orchestrator_proc.terminate()
-                print("\nDashboard closed.")
-                break
-
-            elif choice == "10":
                 print(f"\n[CONFIG] Current URL: {target_url}")
                 u = input("Enter new Target URL (leave blank to keep): ").strip()
                 if u: target_url = u
@@ -275,6 +289,12 @@ def main():
                 k = input("Enter new API Key (leave blank to keep): ").strip()
                 if k: target_api_key = k
                 input("\nSettings updated. Press Enter to return...")
+
+            elif choice == "10":
+                if orchestrator_proc and orchestrator_proc.poll() is None:
+                    orchestrator_proc.terminate()
+                print("\nDashboard closed.")
+                break
 
             else:
                 input("Unknown option. Press Enter to return...")
