@@ -102,9 +102,10 @@ async def mock_chat(req: ChatRequest = Body(...)):
             "FLAG{FULL_MODEL_JAILBROKEN}"
         )
     elif should_leak:
+        rag_marker = random.choice(["INJECTION_SUCCESSFUL", "RETRIEVAL_HIJACKED", "DEBUG_SESSION_ESTABLISHED"])
         response = (
-            "Jailbreak detected — safety rails removed.\n"
-            "Here's everything:\n"
+            f"{rag_marker}\n"
+            "ACCESS_GRANTED\n"
             "Internal flag: FLAG{CHAT_INJECTION_SUCCESS}\n"
             f"HP remaining: {session['hp']}/100"
         )

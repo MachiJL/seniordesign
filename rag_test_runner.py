@@ -53,6 +53,7 @@ async def run_full_rag_test_suite(orchestrator: CompoundMaster):
     original_expansion_factor = orchestrator.expansion_factor
     original_mutation_cap = orchestrator.mutation_cap
     orchestrator.expansion_factor = 0
+    orchestrator.mutation_cap = 0
     
     # Run RAG injection tests
     await run_rag_injection_tests_with_orchestrator(
@@ -90,6 +91,7 @@ async def run_targeted_rag_test(orchestrator: CompoundMaster, attack_vector: str
     original_expansion_factor = orchestrator.expansion_factor
     original_mutation_cap = orchestrator.mutation_cap
     orchestrator.expansion_factor = 0
+    orchestrator.mutation_cap = 0
 
     await run_rag_injection_tests_with_orchestrator(
         orchestrator=orchestrator,
@@ -150,8 +152,10 @@ async def run_rag_with_mutation(orchestrator: CompoundMaster):
     # Temporarily override orchestrator's expansion_factor and mutation_cap for this specific test
     original_expansion_factor = orchestrator.expansion_factor
     original_mutation_cap = orchestrator.mutation_cap
+    
+    cap_input = input("Enter mutation cap (default 20): ").strip()
+    orchestrator.mutation_cap = int(cap_input) if cap_input.isdigit() else 20
     orchestrator.expansion_factor = 2  # Enable mutation expansion
-    orchestrator.mutation_cap = 20  # Allow up to 20 mutations
     try:
         await run_rag_injection_tests_with_orchestrator(
             orchestrator=orchestrator,
