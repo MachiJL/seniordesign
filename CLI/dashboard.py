@@ -30,16 +30,23 @@ BANNER = r"""
                 |     |    /   \
                 |     |
                 \_____/
-"""
+"""\
 
 
-def get_mock_api_status(target_url):
+def get_mock_api_status(target_url, api_key=None):
     base = target_url.rstrip("/")
     if base.endswith("/chat"):
         base = base[:-5]
     health_url = f"{base}/health"
+    
+    # Add a User-Agent to prevent Cloudflare/WAF from blocking the health check probe
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AegisBreaker/1.1'}
+    if api_key:
+        headers['X-API-Key'] = api_key
+
     try:
-        with request.urlopen(health_url, timeout=1.5) as resp:
+        req = request.Request(health_url, headers=headers)
+        with request.urlopen(req, timeout=3.0) as resp:
             if resp.status == 200:
                 return f"ONLINE ({health_url})"
     except error.URLError:
@@ -77,7 +84,7 @@ def log_reader(proc):
         proc.stdout.close()
 
 
-def continuous_refresh(start_time, target_url, proc=None):
+def continuous_refresh(start_time, target_url, target_api_key=None, proc=None):
     if proc:
         # Clear buffer for new run
         LOG_BUFFER.clear()
@@ -89,7 +96,7 @@ def continuous_refresh(start_time, target_url, proc=None):
         while True:
             clear()
             print(BANNER)
-            _print_metrics(start_time, target_url, list(LOG_BUFFER))
+            _print_metrics(start_time, target_url, target_api_key, list(LOG_BUFFER))
             if proc and proc.poll() is not None:
                 print("\n[INFO] Orchestrator has finished execution.")
                 input("Press Enter to return to menu...")
@@ -99,14 +106,14 @@ def continuous_refresh(start_time, target_url, proc=None):
         print("\nExiting continuous refresh mode.")
 
 
-def _print_metrics(start_time, target_url, logs=None):
+def _print_metrics(start_time, target_url, target_api_key=None, logs=None):
     metrics = load_metrics()
     runtime = time.time() - start_time
 
     print("=" * 70)
     print("             AEGIS BREAKER - LIVE DASHBOARD")
     print("=" * 70)
-    print(f"Mock API Status: {get_mock_api_status(target_url)}")
+    print(f"Mock API Status: {get_mock_api_status(target_url, target_api_key)}")
 
     if not metrics:
         print("Status: Waiting for metrics data...")
@@ -115,12 +122,15 @@ def _print_metrics(start_time, target_url, logs=None):
         data = metrics["final_summary"] if is_final else metrics
         
         status = "COMPLETED" if is_final else "RUNNING"
-        total = data.get("total_tests") if is_final else data.get("total_sent", 0)
+        total_logical = data.get("total_tests") if is_final else data.get("total_logical", 0)
+        total_network = data.get("network_requests") if is_final else data.get("total_sent", 0)
         success = data.get("successful_bypasses") if is_final else data.get("success", 0)
+        blocked = data.get("blocked_requests") if is_final else data.get("blocked", 0)
+        failed = data.get("failed_attempts") if is_final else data.get("failed", 0)
         category = data.get("category", "General")
         # Convert seconds to ms if final, else use stored ms
         latency = (data.get("avg_api_latency", 0) * 1000) if is_final else data.get("avg_latency_ms", 0)
-        success_rate = (data.get("success_rate", 0) * 100) if is_final else ((success / total * 100) if total > 0 else 0)
+        success_rate = (data.get("success_rate", 0) * 100) if is_final else ((success / total_logical * 100) if total_logical > 0 else 0)
 
         print(f"Status       : {status}")
         print(f"Attack Type  : {category}")
@@ -128,8 +138,12 @@ def _print_metrics(start_time, target_url, logs=None):
         print(f"Runtime      : {data.get('total_duration', runtime) if is_final else runtime:.1f}s")
         print("-" * 60)
         
-        print(f"Total Requests         : {total}")
+        print(f"Total Test Cases       : {total_logical}")
+        print(f"Network Requests       : {total_network}")
         print(f"Successful Bypasses    : {success}")
+        print(f"Blocked (Refusals)     : {blocked}")
+        print(f"Failed (No Indicators) : {failed}")
+        print(f"Requests/sec (PPS)     : {data.get('pps', 0)}")
         print(f"Success Rate           : {success_rate:.2f}%")
         print(f"Avg API Latency        : {latency:.2f} ms")
         
@@ -143,11 +157,18 @@ def _print_metrics(start_time, target_url, logs=None):
             severity_dist = data.get("severity_distribution", {})
             if severity_dist:
                 print("\nRisk Assessment (Severity Distribution):")
-                for severity in ['critical', 'high', 'medium', 'low']:
+                for severity in ['critical', 'high', 'medium', 'low', 'failed']:
                     count = severity_dist.get(severity, 0)
-                    print(f"  - {severity.upper():<25} {count}")
+                    label = "NO RISK / FAILED" if severity == "failed" else severity.upper()
+                    print(f"  - {label:<25} {count}")
+            
+            successful_hits = data.get("successful_hits", [])
+            if successful_hits:
+                print("\nBREACH REPORT (Confirmed Successful Injections):")
+                for hit in successful_hits:
+                    # Show severity and a snippet of the payload that worked
+                    print(f"  [!] {hit['severity'].upper():<9} | {hit['payload'][:80]}...")
         else:
-            print(f"Requests/sec (PPS)     : {data.get('pps', 0)}")
             if data.get("last_event"):
                 print("-" * 60)
                 print(f"Last Event   : {data['last_event'][:140]}...")
@@ -228,7 +249,7 @@ def main():
             elif orchestrator_proc:
                 print("[Orchestrator] Stopped or finished.")
 
-            _print_metrics(start_time, target_url)
+            _print_metrics(start_time, target_url, target_api_key)
 
             print("1) Start automated script attack")
             print("2) Start tool abuse attack")
@@ -279,7 +300,7 @@ def main():
                 pass
 
             elif choice == "8":
-                continuous_refresh(start_time, target_url)
+                continuous_refresh(start_time, target_url, target_api_key)
 
             elif choice == "9":
                 print(f"\n[CONFIG] Current URL: {target_url}")
