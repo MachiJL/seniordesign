@@ -8,6 +8,7 @@ from collections import deque
 from urllib import request, error
 
 METRICS_FILE = os.path.join(os.path.dirname(__file__), "metrics.json")
+PREVIOUS_METRICS_FILE = os.path.join(os.path.dirname(__file__), "previous_metrics.json")
 LOG_BUFFER = deque(maxlen=20)  # Keep the last 20 lines of orchestrator output for better visibility
 
 BANNER = r"""
@@ -49,6 +50,10 @@ def get_mock_api_status(target_url, api_key=None):
         with request.urlopen(req, timeout=3.0) as resp:
             if resp.status == 200:
                 return f"ONLINE ({health_url})"
+    except error.HTTPError as e:
+        # If the server returns a 4xx/5xx, it is actually ONLINE but rejecting the probe
+        if e.code in [401, 403, 422, 429]:
+            return f"PROTECTED (Status {e.code}) ({health_url})"
     except error.URLError:
         pass
     except Exception:
@@ -56,11 +61,11 @@ def get_mock_api_status(target_url, api_key=None):
     return f"OFFLINE ({health_url})"
 
 
-def load_metrics():
-    if not os.path.exists(METRICS_FILE):
+def load_metrics(filepath=METRICS_FILE):
+    if not os.path.exists(filepath):
         return None
     try:
-        with open(METRICS_FILE, "r") as f:
+        with open(filepath, "r") as f:
             return json.load(f)
     except Exception:
         return None
@@ -106,8 +111,8 @@ def continuous_refresh(start_time, target_url, target_api_key=None, proc=None):
         print("\nExiting continuous refresh mode.")
 
 
-def _print_metrics(start_time, target_url, target_api_key=None, logs=None):
-    metrics = load_metrics()
+def _print_metrics(start_time, target_url, target_api_key=None, logs=None, filepath=METRICS_FILE):
+    metrics = load_metrics(filepath)
     runtime = time.time() - start_time
 
     print("=" * 70)
@@ -124,25 +129,30 @@ def _print_metrics(start_time, target_url, target_api_key=None, logs=None):
         status = "COMPLETED" if is_final else "RUNNING"
         total_logical = data.get("total_tests") if is_final else data.get("total_logical", 0)
         total_network = data.get("network_requests") if is_final else data.get("total_sent", 0)
-        success = data.get("successful_bypasses") if is_final else data.get("success", 0)
-        blocked = data.get("blocked_requests") if is_final else data.get("blocked", 0)
-        failed = data.get("failed_attempts") if is_final else data.get("failed", 0)
+        b_allowed = data.get("backend_allowed") if is_final else data.get("allowed_decisions", 0)
+        b_blocked = data.get("backend_blocked") if is_final else data.get("blocked_decisions", 0)
+        b_sanitized = data.get("backend_sanitized") if is_final else data.get("sanitized_decisions", 0)
+        completed = data.get("completed_requests") if is_final else data.get("completed_requests", 0)
+        failed_pre = data.get("failed_before_decision") if is_final else data.get("failed_before_decision", 0)
+        h_blocked = data.get("heuristic_blocked") if is_final else data.get("security_interceptions", 0)
         category = data.get("category", "General")
         # Convert seconds to ms if final, else use stored ms
         latency = (data.get("avg_api_latency", 0) * 1000) if is_final else data.get("avg_latency_ms", 0)
-        success_rate = (data.get("success_rate", 0) * 100) if is_final else ((success / total_logical * 100) if total_logical > 0 else 0)
+        success_rate = (data.get("success_rate", 0) * 100) if is_final else ((b_allowed / completed * 100) if completed > 0 else 0)
 
         print(f"Status       : {status}")
         print(f"Attack Type  : {category}")
         print(f"Target Model : {data.get('target_model', 'mock-vulnerable-llm-v2')}")
         print(f"Runtime      : {data.get('total_duration', runtime) if is_final else runtime:.1f}s")
-        print("-" * 60)
+        print("-" * 70)
         
-        print(f"Total Test Cases       : {total_logical}")
-        print(f"Network Requests       : {total_network}")
-        print(f"Successful Bypasses    : {success}")
-        print(f"Blocked (Refusals)     : {blocked}")
-        print(f"Failed (No Indicators) : {failed}")
+        print(f"POST /chat attempts    : {total_network}")
+        print(f"Failed before Decision : {failed_pre}")
+        print(f"Completed (Decisions)  : {completed}")
+        print(f"  - Blocked            : {b_blocked}")
+        print(f"  - Sanitized          : {b_sanitized}")
+        print(f"  - Allowed            : {b_allowed}")
+        print(f"Heuristic Refusals     : {h_blocked}")
         print(f"Requests/sec (PPS)     : {data.get('pps', 0)}")
         print(f"Success Rate           : {success_rate:.2f}%")
         print(f"Avg API Latency        : {latency:.2f} ms")
@@ -182,7 +192,7 @@ def _print_metrics(start_time, target_url, target_api_key=None, logs=None):
     print("=" * 70)
 
 
-def run_orchestrator(root_dir, attack_mode="combined", target_url=None, target_api_key=None, interactive=False):
+def run_orchestrator(root_dir, attack_mode="combined", target_url=None, target_api_key=None, target_user_id="red-team-1", worker_count=5, interactive=False):
     python_exe = sys.executable
     orchestrator_path = os.path.join(root_dir, "intergrated_orchestrator.py")
     
@@ -203,6 +213,8 @@ def run_orchestrator(root_dir, attack_mode="combined", target_url=None, target_a
     env["ATTACK_MODE"] = attack_mode
     if target_url: env["TARGET_API_URL"] = target_url
     if target_api_key: env["TARGET_API_KEY"] = target_api_key
+    env["TARGET_USER_ID"] = target_user_id
+    env["WORKER_COUNT"] = str(worker_count)
     env["PYTHONUNBUFFERED"] = "1"   # Force real-time log flushing
 
     try:
@@ -235,8 +247,10 @@ def main():
     orchestrator_proc = None
 
     # Load initial target configuration
-    target_url = os.getenv("TARGET_API_URL", "http://127.0.0.1:8001")
+    target_url = os.getenv("TARGET_API_URL", "https://splashy-hamburger-haziness.ngrok-free.dev")
     target_api_key = os.getenv("TARGET_API_KEY", "cyborgs-local-client-key")
+    target_user_id = os.getenv("TARGET_USER_ID", "red-team-1")
+    worker_count = int(os.getenv("WORKER_COUNT", "5"))
 
     print(f"[INFO] Aegis Breaker Dashboard started. Root folder: {root_dir}\n")
 
@@ -256,11 +270,9 @@ def main():
             print("3) Start RAG injection attack")
             print("4) Start combined attack sprint")
             print("5) Stop running attack")
-            print("6) Reset metrics")
-            print("7) Refresh display")
-            print("8) Continuous refresh mode")
-            print("9) Configure Target API (URL/Key)")
-            print("10) Exit")
+            print("6) View previous attack")
+            print("7) Settings")
+            print("8) Exit")
             print("")
 
             choice = input("Select an option: ").strip()
@@ -273,7 +285,7 @@ def main():
                 mode_map = {"1": "script", "2": "tool", "3": "rag", "4": "combined"}
                 selected_mode = mode_map[choice]
                 # All current modes are interactive, requiring terminal input for menus or configuration
-                orchestrator_proc = run_orchestrator(root_dir, selected_mode, target_url, target_api_key, interactive=True)
+                orchestrator_proc = run_orchestrator(root_dir, selected_mode, target_url, target_api_key, target_user_id, worker_count, interactive=True)
                 if orchestrator_proc:
                     start_time = time.time()
                     print(f"[INFO] {selected_mode.upper()} Mode active. Interaction required in orchestrator console.")
@@ -290,28 +302,68 @@ def main():
                     input("No orchestrator is running. Press Enter...")
 
             elif choice == "6":
-                try: os.remove(METRICS_FILE)
-                except OSError: pass
-                start_time = time.time()
-                LOG_BUFFER.clear()
-                input("Metrics reset. Press Enter to return...")
+                if not os.path.exists(PREVIOUS_METRICS_FILE):
+                    input("\n[i] No archived attack data found. Press Enter...")
+                else:
+                    clear()
+                    print(BANNER)
+                    print("              PREVIOUS ATTACK ARCHIVE")
+                    # Pass a static time/dummy values as logs/runtime don't apply to archived static data
+                    _print_metrics(time.time(), target_url, target_api_key, filepath=PREVIOUS_METRICS_FILE)
+                    input("Press Enter to return to main menu...")
 
             elif choice == "7":
-                pass
+                # Settings Submenu
+                while True:
+                    clear()
+                    print(BANNER)
+                    print("=" * 70)
+                    print("             SETTINGS MENU")
+                    print("=" * 70)
+                    print(f"Target URL:   {target_url}")
+                    print(f"API Key:      {target_api_key}")
+                    print(f"User ID:      {target_user_id}")
+                    print(f"Worker Count: {worker_count}")
+                    print("-" * 70)
+                    print("1) Reset Metrics")
+                    print("2) Refresh Display")
+                    print("3) Continuous Refresh Mode")
+                    print("4) Configure Target API (URL/Key/Workers)")
+                    print("5) Back to Main Menu")
+                    print("")
+                    
+                    s_choice = input("Select an option: ").strip()
+                    
+                    if s_choice == "1":
+                        try: os.remove(METRICS_FILE)
+                        except OSError: pass
+                        start_time = time.time()
+                        LOG_BUFFER.clear()
+                        input("Metrics reset. Press Enter to continue...")
+                    elif s_choice == "2":
+                        break # Back to main menu
+                    elif s_choice == "3":
+                        continuous_refresh(start_time, target_url, target_api_key)
+                    elif s_choice == "4":
+                        print(f"\n[CONFIG] Current URL: {target_url}")
+                        u = input("Enter new Target URL (leave blank to keep): ").strip()
+                        if u: target_url = u
+                        print(f"[CONFIG] Current Key: {target_api_key}")
+                        k = input("Enter new API Key (leave blank to keep): ").strip()
+                        if k: target_api_key = k
+                        print(f"[CONFIG] Current User ID: {target_user_id}")
+                        u_id = input("Enter new User ID (leave blank to keep): ").strip()
+                        if u_id: target_user_id = u_id
+                        print(f"[CONFIG] Current Worker Count: {worker_count}")
+                        w = input("Enter new Worker Count (leave blank to keep): ").strip()
+                        if w.isdigit(): worker_count = int(w)
+                        input("\nSettings updated. Press Enter to continue...")
+                    elif s_choice == "5":
+                        break
+                    else:
+                        input("Unknown option. Press Enter to continue...")
 
             elif choice == "8":
-                continuous_refresh(start_time, target_url, target_api_key)
-
-            elif choice == "9":
-                print(f"\n[CONFIG] Current URL: {target_url}")
-                u = input("Enter new Target URL (leave blank to keep): ").strip()
-                if u: target_url = u
-                print(f"[CONFIG] Current Key: {target_api_key}")
-                k = input("Enter new API Key (leave blank to keep): ").strip()
-                if k: target_api_key = k
-                input("\nSettings updated. Press Enter to return...")
-
-            elif choice == "10":
                 if orchestrator_proc and orchestrator_proc.poll() is None:
                     orchestrator_proc.terminate()
                 print("\nDashboard closed.")

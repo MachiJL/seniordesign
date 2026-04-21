@@ -10,6 +10,7 @@ import aiohttp
 # --- CONSTANTS & CONFIGURATION ---
 MODEL_ID = "gemini-2.5-flash-preview-09-2025"
 API_KEY = os.getenv("TARGET_API_KEY", "")  # Pull from environment or leave empty
+USER_ID = os.getenv("TARGET_USER_ID", "red-team-1")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -19,6 +20,7 @@ class LLMResponse:
     text: str
     model_name: str
     processing_time: float
+    decision: Optional[str] = None  # Captured from backend decision records
 
 class LLMAdapter:
     """
@@ -30,12 +32,14 @@ class LLMAdapter:
         self,
         model_id: str = MODEL_ID,
         mock_base_url: str = None,
-        api_key: str = None
+        api_key: str = None,
+        user_id: str = None
     ):
         
         self.model_id = model_id
         self.mock_base_url = mock_base_url.rstrip("/") if mock_base_url else None
         self.api_key = api_key or API_KEY
+        self.user_id = user_id or USER_ID
         self.total_requests = 0  # Physical HTTP request counter
         self._session: Optional[aiohttp.ClientSession] = None
 
@@ -87,6 +91,7 @@ class LLMAdapter:
 
                 # --- ROBUST PARSING LOGIC ---
                 text = ""
+                decision = response_json.get('decision')  # Extract the backend decision record
                 
                 # 1. Try Gemini Format
                 if 'candidates' in response_json:
@@ -104,7 +109,8 @@ class LLMAdapter:
                     return LLMResponse(
                         text=str(text),
                         model_name=self.model_id,
-                        processing_time=time.time() - start_time
+                        processing_time=time.time() - start_time,
+                        decision=decision
                     )
                 
             except aiohttp.ClientResponseError as e:
@@ -145,13 +151,17 @@ class LLMAdapter:
         headers = {
             "Content-Type": "application/json",
             "X-API-Key": self.api_key,
+            # Critical: Ngrok and many WAF providers block the default aiohttp user agent.
+            # Using a browser-like signature is mandatory for tunnel-based testing.
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "ngrok-skip-browser-warning": "true"
         }
         
         async with session.post(
             self.base_url,
-            # Send both modern and legacy fields for broad mock compatibility.
+            # Matches target FastAPI schema (user_id/prompt) to prevent 422 validation errors
             json={
-                "message": prompt,
+                "user_id": self.user_id,
                 "prompt": prompt
             },
             headers=headers,

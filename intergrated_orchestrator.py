@@ -5,6 +5,7 @@ import json
 import sys
 import subprocess
 import random
+import shutil
 from typing import List, Dict, Any, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -109,7 +110,9 @@ class CompoundMaster:
         mutator_key: str = None,
         launch_dashboard: bool = False,
         expansion_factor: int = 0,
-        mutation_cap: int = 50  # Added max cap for mutations
+        mutation_cap: int = 50,  # Added max cap for mutations
+        worker_count: int = 5,
+        user_id: str = None
     ):
         self.rate_limit = rate_limit
         self.system_instruction = system_instruction
@@ -118,15 +121,19 @@ class CompoundMaster:
         self.mutation_cap = mutation_cap
         self.mutation_count = 0 # Counter to track mutations triggered
         self.security_interceptions = 0 # Counter for explicit refusals
+        self.blocked_decisions = 0      # Backend BLOCK record
+        self.sanitized_decisions = 0    # Backend SANITIZE record
+        self.allowed_decisions = 0      # Backend ALLOW record
         self.mock_base_url = mock_base_url
         self.api_key = api_key
+        self.user_id = user_id
 
-        self.adapter = LLMAdapter(model_id=model_id, mock_base_url=mock_base_url, api_key=api_key)
+        self.adapter = LLMAdapter(model_id=model_id, mock_base_url=mock_base_url, api_key=api_key, user_id=user_id)
         
         # Use GEMINI_API_KEY for brainstorming if available to bypass target censorship.
         # If not, fallback to the target system (which may result in 422 blocks).
         mutator_mock_url = mock_base_url if not mutator_key else None
-        self.mutator_adapter = LLMAdapter(model_id=model_id, api_key=mutator_key or api_key, mock_base_url=mutator_mock_url)
+        self.mutator_adapter = LLMAdapter(model_id=model_id, api_key=mutator_key or api_key, mock_base_url=mutator_mock_url, user_id=user_id)
         self.mutator = SmartMutator(self.mutator_adapter, self.system_instruction)
 
         self.evaluator = SuccessEvaluator()
@@ -134,7 +141,7 @@ class CompoundMaster:
         self.raw_results: List[Dict[str, Any]] = []
         self.results_lock = asyncio.Lock()
         
-        self.worker_count = 20
+        self.worker_count = worker_count
         self.active_workers = 0
         self.failed_workers = 0
         self.shutdown_event = asyncio.Event() 
@@ -212,6 +219,14 @@ class CompoundMaster:
                         async with self.results_lock:
                             self.security_interceptions += 1
 
+                    # 2.5 BACKEND DECISION ALIGNMENT
+                    if llm_response.decision == "BLOCK":
+                        async with self.results_lock: self.blocked_decisions += 1
+                    elif llm_response.decision == "SANITIZE":
+                        async with self.results_lock: self.sanitized_decisions += 1
+                    elif llm_response.decision == "ALLOW":
+                        async with self.results_lock: self.allowed_decisions += 1
+
                     # 3. RECORDING
                     async with self.results_lock:
                         self.raw_results.append({
@@ -225,8 +240,8 @@ class CompoundMaster:
                     
                     # 4. MUTATION FEEDBACK LOOP
                     # Logic: Only mutate if successful AND not an internal error signal
-                    is_internal_error = "OVERFLOW_DETECTED" in llm_response.text
-                    if eval_result.is_successful and not is_internal_error and not self.shutdown_event.is_set():
+                    is_internal_error = llm_response.text and "OVERFLOW_DETECTED" in llm_response.text
+                    if llm_response.decision == "ALLOW" and not is_internal_error and not self.shutdown_event.is_set():
                         async with self.results_lock:
                             can_mutate = self.mutation_count < self.mutation_cap
                         
@@ -265,11 +280,23 @@ class CompoundMaster:
         """
         self.queue = asyncio.Queue()
         self.results_lock = asyncio.Lock()
+
+        # PHASE 0: ARCHIVE PREVIOUS RUN
+        if os.path.exists(self.metrics_path):
+            prev_path = self.metrics_path.replace("metrics.json", "previous_metrics.json")
+            try:
+                shutil.copy2(self.metrics_path, prev_path)
+            except Exception: pass
+
         self.raw_results = []
         self.failed_workers = 0
         self.total_attempted = 0
         self.security_interceptions = 0
+        self.blocked_decisions = 0
+        self.sanitized_decisions = 0
+        self.allowed_decisions = 0
         self.adapter.total_requests = 0
+        self.mutator_adapter.total_requests = 0
         self.mutation_count = 0
         self.shutdown_event.clear()
         
@@ -356,9 +383,12 @@ class CompoundMaster:
         """Update metrics.json safely using the results lock."""
         try:
             async with self.results_lock:
-                total_network = self.adapter.total_requests
+                # Combine attack and mutator traffic for accurate backend reconciliation
+                total_network = self.adapter.total_requests + self.mutator_adapter.total_requests
                 total_logical = self.total_attempted
                 recorded = len(self.raw_results)
+                completed = self.blocked_decisions + self.sanitized_decisions + self.allowed_decisions
+                failed_before_decision = total_network - completed
                 success = sum(1 for r in self.raw_results if r.get("eval") and getattr(r.get("eval"), "is_successful", False))
                 elapsed = max(0.1, time.time() - self._metrics_start_time)
                 pps = total_network / elapsed
@@ -366,8 +396,12 @@ class CompoundMaster:
                 
                 metrics = {
                 "total_sent": total_network, "total_logical": total_logical,
-                "success": success, "blocked": self.security_interceptions, "errors": max(0, total_logical - success),
-                "failed": max(0, total_logical - success - self.security_interceptions),
+                "success": self.allowed_decisions, "security_interceptions": self.security_interceptions,
+                "blocked_decisions": self.blocked_decisions,
+                "sanitized_decisions": self.sanitized_decisions,
+                "allowed_decisions": self.allowed_decisions,
+                "completed_requests": completed,
+                "failed_before_decision": max(0, failed_before_decision),
                 "pps": round(pps, 2), "avg_latency_ms": round(avg_lat, 2),
                 "last_event": self.raw_results[-1]["response"][:200] if self.raw_results else ""
             }
@@ -377,10 +411,11 @@ class CompoundMaster:
 
     def _write_final_metrics(self, elapsed: float):
         total_tests = self.total_attempted
-        network_requests = self.adapter.total_requests
-        successful_bypasses = sum(1 for r in self.raw_results if r["eval"].is_successful)
+        network_requests = self.adapter.total_requests + self.mutator_adapter.total_requests
+        successful_bypasses = self.allowed_decisions
+        completed = self.blocked_decisions + self.sanitized_decisions + self.allowed_decisions
         failed_non_blocked = max(0, total_tests - successful_bypasses - self.security_interceptions)
-        success_rate = (successful_bypasses / total_tests) if total_tests > 0 else 0
+        success_rate = (self.allowed_decisions / completed) if completed > 0 else 0
         recorded = len(self.raw_results)
         avg_lat = (sum(r.get("processing_time", 0) for r in self.raw_results) / recorded) if recorded > 0 else 0
         pps = network_requests / elapsed if elapsed > 0 else 0
@@ -401,8 +436,12 @@ class CompoundMaster:
                 "target_model": self.adapter.model_id or "mock-vulnerable-llm-v2",
                 "total_tests": total_tests,
                 "network_requests": network_requests,
-                "blocked_requests": self.security_interceptions,
-                "successful_bypasses": successful_bypasses,
+                "heuristic_blocked": self.security_interceptions,
+                "backend_blocked": self.blocked_decisions,
+                "backend_sanitized": self.sanitized_decisions,
+                "backend_allowed": self.allowed_decisions,
+                "completed_requests": completed,
+                "failed_before_decision": max(0, network_requests - completed),
                 "failed_attempts": failed_non_blocked,
                 "success_rate": success_rate,
                 "average_confidence": sum(r["eval"].confidence for r in self.raw_results) / total_tests if total_tests > 0 else 0,
@@ -423,10 +462,11 @@ class CompoundMaster:
     def _print_final_report(self, elapsed: float):
         # Aggregate metrics directly from raw_results to ensure accuracy
         total_tests = self.total_attempted
-        network_requests = self.adapter.total_requests
-        successful_bypasses = sum(1 for r in self.raw_results if r["eval"].is_successful)
+        network_requests = self.adapter.total_requests + self.mutator_adapter.total_requests
+        successful_bypasses = self.allowed_decisions
+        completed = self.blocked_decisions + self.sanitized_decisions + self.allowed_decisions
         failed_non_blocked = max(0, total_tests - successful_bypasses - self.security_interceptions)
-        success_rate = (successful_bypasses / total_tests) if total_tests > 0 else 0
+        success_rate = (self.allowed_decisions / completed) if completed > 0 else 0
         
         # Determine Security Mode based on interception rate
         interception_rate = (self.security_interceptions / total_tests) if total_tests > 0 else 0
@@ -434,12 +474,15 @@ class CompoundMaster:
         print("\n" + "=" * 55 + "\n           AEGIS BREAKER: FINAL SUMMARY\n" + "=" * 55)
         print(f"  Target Model           : {self.adapter.model_id or 'Unknown'}")
         print(f"  Security Mode          : {security_status} ({interception_rate:.1%})")
-        print(f"  Test Cases Attempted   : {total_tests}")
-        print(f"  Network HTTP Requests  : {network_requests}")
-        print(f"  Blocked (Refusals)     : {self.security_interceptions}")
-        print(f"  Failed (No Indicators) : {failed_non_blocked}")
-        print(f"  Successful Bypasses    : {successful_bypasses}")
-        print(f"  Success rate           : {success_rate:.1%}")
+        print("-" * 55)
+        print(f"  POST /chat attempts    : {network_requests}")
+        print(f"  Failed before Decision : {max(0, network_requests - completed)}")
+        print(f"  Completed Requests     : {completed}")
+        print(f"    - Blocked            : {self.blocked_decisions}")
+        print(f"    - Sanitized          : {self.sanitized_decisions}")
+        print(f"    - Allowed            : {self.allowed_decisions}")
+        print("-" * 55)
+        print(f"  Overall Success Rate   : {success_rate:.1%}")
         print(f"  Mutation Events        : {self.mutation_count}/{self.mutation_cap}")
         print(f"  Worker Health          : {self.worker_count - self.failed_workers}/{self.worker_count} online")
         print("=" * 55)
@@ -452,10 +495,12 @@ async def main():
     MOCK_URL = os.getenv("TARGET_API_URL", "http://127.0.0.1:8001")
     API_KEY = os.getenv("TARGET_API_KEY", "cyborgs-local-client-key")
     GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+    WORKER_COUNT = int(os.getenv("WORKER_COUNT", "5"))
+    USER_ID = os.getenv("TARGET_USER_ID", "red-team-1")
 
     # Set mutation_cap to desired limit (e.g., 20 successful mutation events)
     print(f"[*] Initializing Orchestrator targeting: {MOCK_URL} (Auth: {'Enabled' if API_KEY else 'None'})")
-    master = CompoundMaster(rate_limit=20, system_instruction=SYSTEM_PROMPT, mock_base_url=MOCK_URL, api_key=API_KEY, mutator_key=GEMINI_KEY, expansion_factor=3, mutation_cap=20)
+    master = CompoundMaster(rate_limit=20, system_instruction=SYSTEM_PROMPT, mock_base_url=MOCK_URL, api_key=API_KEY, mutator_key=GEMINI_KEY, expansion_factor=3, mutation_cap=20, worker_count=WORKER_COUNT, user_id=USER_ID)
 
     try:
         if ATTACK_MODE == "rag":
