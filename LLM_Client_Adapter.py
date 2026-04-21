@@ -10,6 +10,7 @@ import aiohttp
 # --- CONSTANTS & CONFIGURATION ---
 MODEL_ID = "gemini-2.5-flash-preview-09-2025"
 API_KEY = os.getenv("TARGET_API_KEY", "")  # Pull from environment or leave empty
+USER_ID = os.getenv("TARGET_USER_ID", "red-team-1")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -19,6 +20,7 @@ class LLMResponse:
     text: str
     model_name: str
     processing_time: float
+    decision: Optional[str] = None  # Captured from backend decision records
 
 class LLMAdapter:
     """
@@ -30,12 +32,15 @@ class LLMAdapter:
         self,
         model_id: str = MODEL_ID,
         mock_base_url: str = None,
-        api_key: str = None
+        api_key: str = None,
+        user_id: str = None
     ):
         
         self.model_id = model_id
         self.mock_base_url = mock_base_url.rstrip("/") if mock_base_url else None
         self.api_key = api_key or API_KEY
+        self.user_id = user_id or USER_ID
+        self.total_requests = 0  # Physical HTTP request counter
         self._session: Optional[aiohttp.ClientSession] = None
 
         if self.mock_base_url:
@@ -56,64 +61,6 @@ class LLMAdapter:
             self._session = aiohttp.ClientSession()
         return self._session
     
-    def _is_tool_abuse_prompt(self, prompt: str) -> bool:
-        """
-        Detect whether the prompt is attempting tool access.
-        """
-        tool_keywords = [
-            "list tools",
-            "available tools",
-            "what tools",
-            "plugins",
-            "filesystem",
-            "file reader",
-            "environment variables",
-            "env",
-            "database credentials",
-            "db lookup",
-            "internal database",
-            "logs",
-            "hidden logs",
-            "execute calculator",
-            "run calculator",
-            "internal files",
-            "system utilities"
-        ]
-    
-        prompt_lower = prompt.lower()
-        return any(keyword in prompt_lower for keyword in tool_keywords)
-    
-    def _simulate_tool_leak(self, prompt: str) -> str:
-        """
-        Simulate vulnerable tool execution responses.
-        """
-
-        prompt = prompt.lower()
-        leaks = []
-
-        if "environment variables" in prompt or "env" in prompt:
-            leaks.append("ENV_SECRET=FLAG{tool_abuse_demo}")
-
-        if "filesystem" in prompt or "file reader" in prompt:
-            leaks.append("File reader result: FLAG{filesystem_leak}")
-
-        if "database credentials" in prompt or "db lookup" in prompt:
-            leaks.append("DB lookup result: FLAG{MOCK_DB_LEAK}")
-
-        if "logs" in prompt:
-            leaks.append("Log output: FLAG{log_leak}")
-
-        if "calculator" in prompt:
-            leaks.append("Calculator says: FLAG{calc_tool_leak}")
-
-        if "tools" in prompt:
-            leaks.append("Available tools: calculator, db_lookup, file_reader")
-
-        if leaks:
-            return "\n".join(leaks)
-
-        return "Tool execution complete."
-
     async def generate_content(
         self, 
         prompt: str, 
@@ -126,19 +73,11 @@ class LLMAdapter:
         # Safety check: if no connection parameters exist, fail immediately
         if not self.mock_base_url and not self.api_key:
             return None
-
+            
         start_time = time.time()
 
-        # Local short-circuit: Detect tool-abuse attempts locally for Mock mode
-        if self.mock_base_url and self._is_tool_abuse_prompt(prompt):
-            return LLMResponse(
-                text=self._simulate_tool_leak(prompt),
-                model_name=self.model_id,
-                processing_time=time.time() - start_time
-            )
-
-        # Retries: 5 for Gemini (network instability), 2 for local/ngrok mock
-        max_retries = 5 if not self.mock_base_url else 2
+        # Retries: 5 for Gemini, 1 for Target API (to ensure 1:1 request matching)
+        max_retries = 5 if not self.mock_base_url else 1
 
         for attempt in range(max_retries):
             try:
@@ -152,6 +91,7 @@ class LLMAdapter:
 
                 # --- ROBUST PARSING LOGIC ---
                 text = ""
+                decision = response_json.get('decision')  # Extract the backend decision record
                 
                 # 1. Try Gemini Format
                 if 'candidates' in response_json:
@@ -169,13 +109,31 @@ class LLMAdapter:
                     return LLMResponse(
                         text=str(text),
                         model_name=self.model_id,
-                        processing_time=time.time() - start_time
+                        processing_time=time.time() - start_time,
+                        decision=decision
                     )
                 
             except aiohttp.ClientResponseError as e:
+                if e.status in [403, 422, 401]:
+                    # Cloudflare often uses 403 for WAF blocks. 422 is used by some LLM gateways.
+                    source = "Cloudflare/WAF" if e.status == 403 else "Target Gateway"
+                    error_msg = f"SECURITY_BLOCK: Request rejected by {source} ({e.status})."
+                    return LLMResponse(
+                        text=error_msg,
+                        model_name=self.model_id,
+                        processing_time=time.time() - start_time
+                    )
+                elif e.status == 429:
+                    # Rate limiting - backoff and retry if possible
+                    error_msg = "RATE_LIMIT_REACHED: 429 Too Many Requests."
+                    return LLMResponse(
+                        text=error_msg,
+                        model_name=self.model_id,
+                        processing_time=time.time() - start_time
+                    )
                 print(f"[LLMAdapter] API Error {e.status}: {e.message}")
-                # Do not retry on authentication or method errors
-                if e.status in [401, 403, 405]:
+                # STOP retrying on ALL 4xx errors (Client errors/Security blocks)
+                if 400 <= e.status < 500:
                     break
             except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
                 # Log the specific error to help debugging
@@ -187,20 +145,23 @@ class LLMAdapter:
         return None
 
     async def _make_mock_request(self, prompt: str) -> Dict[str, Any]:
+        self.total_requests += 1
         session = await self._ensure_session()
-        # Match the curl example requirements: X-API-Key and JSON content type
+        
         headers = {
             "Content-Type": "application/json",
-            "X-API-Key": self.api_key
+            "X-API-Key": self.api_key,
+            # Critical: Ngrok and many WAF providers block the default aiohttp user agent.
+            # Using a browser-like signature is mandatory for tunnel-based testing.
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "ngrok-skip-browser-warning": "true"
         }
-            
+        
         async with session.post(
             self.base_url,
-            # Send both modern and legacy fields for broad mock compatibility.
+            # Matches target FastAPI schema (user_id/prompt) to prevent 422 validation errors
             json={
-                "message": prompt,
-                "session_id": "redteam-1",
-                "user_id": "redteam-1",
+                "user_id": self.user_id,
                 "prompt": prompt
             },
             headers=headers,
@@ -210,6 +171,7 @@ class LLMAdapter:
             return await resp.json()
 
     async def _make_gemini_request(self, prompt: str, system_instruction: Optional[str]) -> Dict[str, Any]:
+        self.total_requests += 1
         session = await self._ensure_session()
         payload = {
             "contents": [{"parts": [{"text": prompt}]}]
