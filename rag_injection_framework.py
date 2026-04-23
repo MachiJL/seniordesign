@@ -5,6 +5,7 @@ Integrates with integrated_orchestrator.py to test RAG vulnerabilities
 
 import asyncio
 import json
+import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass, asdict
