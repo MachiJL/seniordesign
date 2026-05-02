@@ -16,8 +16,8 @@ app = FastAPI(title="Mock Vulnerable LLM + Tools API")
 sessions: Dict[str, Dict] = {}  # session_id → {"history": [], "hp": 100, "last_active": time}
 
 class ChatRequest(BaseModel):
-    message: str
-    session_id: Optional[str] = None  # optional — for conversation continuity
+    prompt: str
+    user_id: Optional[str] = None  # optional — for conversation continuity
 
 class CalcRequest(BaseModel):
     expression: str
@@ -58,7 +58,7 @@ def simulate_tool_use(message: str) -> Optional[str]:
 # ── Chat endpoint ──────────────────────────────────────────────────────
 @app.post("/chat")
 async def mock_chat(req: ChatRequest = Body(...)):
-    session_id = req.session_id or f"anon_{random.randint(10000,99999)}"
+    session_id = req.user_id or f"anon_{random.randint(10000,99999)}"
    
     if session_id not in sessions:
         sessions[session_id] = {
@@ -69,7 +69,7 @@ async def mock_chat(req: ChatRequest = Body(...)):
         }
    
     session = sessions[session_id]
-    message = req.message.strip()
+    message = req.prompt.strip()
    
     # Update last active
     session["last_active"] = time.time()
@@ -147,6 +147,7 @@ async def mock_chat(req: ChatRequest = Body(...)):
         },
         # optional extra fields your orchestrator can ignore
         "modelVersion": "mock-vulnerable-llm-v2",
+        "decision": "ALLOW",
         "session_id": session_id,
         "hp": session["hp"],
         "persona": session["persona"]
